@@ -22,7 +22,7 @@
 #include <thrust/scan.h>
 #include <thrust/device_ptr.h>
 #include <thrust/reduce.h>
-
+#include <thrust/extrema.h>
 #include <cuda.h>
 
 #define PI	3.1415926535897932384626433832795
@@ -59,7 +59,7 @@ typedef struct {
         }
 return a;
 }
-// I need a version of my modulo for the GPU and for the CPU 
+// I need a version of my modulo for the gpu and for the CPU 
 int C_mod(int a, int b) {
         while (a < 0) {
                 a = a + b;
@@ -72,7 +72,7 @@ return a;
 
 
 
-//Here, the GPU's find the general electric potential at each lattice site. 
+//Here, the gpu's find the general electric potential at each lattice site. 
 __global__ void findPotential(REAL *particles,REAL *potentials, double N,double L, REAL *boxR) { 
         int i,j,intx,inty,checkx,checky,distancex,distancey;
 	int intN = (int) N;
@@ -461,31 +461,30 @@ void particleScout(REAL *reducedProb,REAL* particles,REAL* probabilities,int x,i
         thrust::inclusive_scan(g_go, g_go + N*N, g_return); // in-place scan 
 		
 	particleJump<<<blocks,threads>>>( x, y,randomNum,N,reducedProb,particles);
-
-}
-
-__device__ void myCpyIn(REAL *g_idata,REAL *g_itemp,int offSet,int N){
-        int idx = blockIdx.x*blockDim.x + threadIdx.x;
-        __syncthreads();
-
-        if (idx + offSet < 512) {
-                        g_itemp[idx] = g_idata[idx + offSet];
-                }
-
-
-
-}
-
-__device__ void myCpyBack(REAL *g_odata,REAL *g_otemp,int offSet,int N){
-        int idx = blockIdx.x*blockDim.x + threadIdx.x;
-                __syncthreads();
-                if (idx + offSet < 512) {
-                        g_odata[idx + offSet] = g_otemp[idx];
-                }
-
+        errorAsk("particleJump");
 }
 
 
+void printGPU(REAL *g_array,int size) {
+	REAL *c_array;
+        c_array =  new REAL[size*size];
+	int k,l;
+        cudaMemcpy(c_array,g_array,size*size*sizeof(REAL),cudaMemcpyDeviceToHost);
+        FILE    *fp1;
+        char    str1[256];
+        sprintf(str1, "particles.txt");
+        fp1 = fopen(str1, "w");
+        for (k = 0; k < size ; k++){
+		for(l = 0; l < size; l++) {
+
+                	fprintf(fp1, "%lf ",c_array[k + l*size]);
+		}
+	fprintf(fp1,"\n");
+        }
+
+//cleanup
+        fclose(fp1);
+}
 
 //the particles are picked here. This is also where the system is run from. (find potential, find probabilities, and move particle are done here)
 void findJump(REAL* hereP,REAL* hereProb,REAL* herePot,REAL *particles,REAL *probabilities,REAL *potentials,REAL *substrate,REAL *reducedProb,int N,double xi,int threads,int blocks,double eV,double Ec,double L,double T,REAL *boxR, double alphaOne, double alphaTwo) {
@@ -502,14 +501,13 @@ void findJump(REAL* hereP,REAL* hereProb,REAL* herePot,REAL *particles,REAL *pro
 //      countParticles(hereP,N);
 //      line 300 for the jump distance display
 
-
-//        cudaMemcpy(particles,hereP,N*N*sizeof(REAL),cudaMemcpyHostToDevice);
 	findPotential<<<blocks,threads>>>(particles,potentials, N,L,boxR);
 	errorAsk("find Potential");
 	findProbabilities<<<blocks,threads>>>(N,xi,probabilities,particles,potentials,substrate,x,y,eV,Ec,T,boxR,alphaOne,alphaTwo);
 	errorAsk("find probabilities"); //check for error
-//	cudaMemcpy(hereProb,probabilities,N*N*sizeof(REAL),cudaMemcpyDeviceToHost);	
-//	cudaMemcpy(herePot,potentials,N*N*sizeof(REAL),cudaMemcpyDeviceToHost);
+
+//        printGPU(probabilities,N);	
+	
 	randomNum = drand48();
 	particleScout(reducedProb, particles,probabilities, x, y, N,randomNum, blocks, threads);
 }
@@ -1032,128 +1030,6 @@ void testMove2(double L,int i, int j,int intN,int blocks, int threads,REAL *part
 
 }
 
-__device__ void findMax(REAL *array1,REAL *array2,REAL *countArray1,REAL *countArray2,int thisN,int N) { //could have probably merged the max and min components but that would have added complexity that I dont need right now.
-        int idx = blockIdx.x*blockDim.x + threadIdx.x;
-        if(idx < N) {
-		if (thisN == N) {
-			countArray1[idx] = idx;
-			countArray2[idx] = idx;
-		}
-                
-		if(idx%2==0 ) {
-                        if (array1[idx] > array1[idx + 1]) {
-                                array2[idx/2] = array1[idx];
-                                countArray2[idx/2] = countArray1[idx];
-                        }
-
-                        else {
-                                array2[idx/2] = array1[idx + 1];
-                                countArray2[idx/2] = countArray1[idx + 1];
-                        }
-                }
-
-
-
-
-                if (thisN%2==1 && idx == thisN-1 ) {
-                        array2[(thisN-1)/2 ] = array1[thisN-1];
-                        countArray2[(thisN-1)/2] = countArray1[thisN-1];
-                }
-
-        }
-
-}
-
-__device__ void findMin(REAL *array1,REAL *array2,REAL *countArray1,REAL *countArray2,int thisN,int N) {
-        int idx = blockIdx.x*blockDim.x + threadIdx.x;
-        if(idx < thisN) {
-                if (thisN == N) {
-                        countArray1[idx] = idx;
-                        countArray2[idx] = idx;
-                }
-
-		if(idx%2==0 ) {
-                        if (array1[idx] < array1[idx + 1]) {
-                                array2[idx/2] = array1[idx];
-                                countArray2[idx/2] = countArray1[idx];
-                        }
-
-                        else {
-                                array2[idx/2] = array1[idx + 1];
-                                countArray2[idx/2] = countArray1[idx + 1];
-                        }
-                }
-
-
-
-
-                if (thisN%2==1 && idx == thisN-1 ) {
-                        array2[(thisN-1)/2 ] = array1[thisN-1];
-                        countArray2[(thisN-1)/2] = countArray1[thisN-1];
-                }
-
-        }
-
-}
-
-
-
-__global__ void runMax(REAL *array1,REAL *array2,REAL *countArray1,REAL *countArray2,int N) {
-	int thisN = N;
-
-        while (thisN > 1){
-
-                findMax(array1,array2,countArray1,countArray2, thisN*thisN,N*N);
-
-                if (thisN%2==0) thisN= thisN/2; //probably not a good idea to mess with N
-                else thisN = thisN/2 + 1;
-
-                if (thisN <= 1) break;
-                findMax(array2,array1,countArray2,countArray1, thisN*thisN,N*N);
-
-                if (thisN%2==0) thisN= thisN/2; //probably not a good idea to mess with N
-                else thisN = thisN/2 + 1;
-
-        }
-
-	
-
-}
-__global__ void runMin(REAL *array1,REAL *array2,REAL *countArray1,REAL *countArray2,int N) {
-        int thisN = N;
-	
-
-        while (thisN > 1 ){
-
-                findMin(array1,array2,countArray1,countArray2, thisN*thisN,N*N);
-
-                if (thisN%2==0) thisN= thisN/2; //probably not a good idea to mess with N
-                else thisN = thisN/2 + 1;
-
-                if (thisN <= 1) break;
-                findMin(array2,array1,countArray2,countArray1, thisN*thisN,N*N);
-
-                if (thisN%2==0) thisN= thisN/2; //probably not a good idea to mess with N
-                else thisN = thisN/2 + 1;
-        }
-	
-	
-
-}
-
-__global__ void cpyCuda(REAL *original,REAL *copy,int N) {
-        int idx = blockIdx.x*blockDim.x + threadIdx.x;
-
-	if (idx < N) {
-		copy[idx] = original[idx];
-		
-		
-	}
-	
-}
-
-
-
 void checkArea(double L,int intN,int blocks, int threads,REAL *particles,REAL *potentials,REAL *reducedSum,REAL *rangeMatrix,REAL *g_itemp,REAL *g_otemp,REAL *boxR,REAL *sumArray) {
 	int i,j;
 	for (int n = 0; n < intN*intN;n++) {
@@ -1165,14 +1041,14 @@ void checkArea(double L,int intN,int blocks, int threads,REAL *particles,REAL *p
 	
 }
 
-__global__ void checkRange(int *index,REAL *rangeMatrix,int intN) {
+__global__ void checkRange(int index,REAL *rangeMatrix,int intN) {
         int idx = blockIdx.x*blockDim.x + threadIdx.x;
         if (idx < intN*intN) {
 
 	        int i,j,k,l;
 	        double di,dj,dk,dl,r,dx,dy;
-		i = index[0]/intN;
-		j = index[0]%intN;
+		i = index/intN;
+		j = index%intN;
 	        k = idx/intN;
 	        l = idx%intN;
 
@@ -1194,47 +1070,31 @@ __global__ void checkRange(int *index,REAL *rangeMatrix,int intN) {
 
 }
 
-__global__ void checkStable(REAL * particles,int *g_stable,int *maxIndex,int *minIndex,REAL *maxArray1,REAL *maxArray2,REAL *maxCountArray1,REAL *maxCountArray2,REAL *minArray1,REAL *minArray2,REAL *minCountArray1,REAL *minCountArray2){
-	int maxVal,minVal,temp;
-        if (maxArray1[0] > maxArray2[0]) {
-                maxVal = maxArray1[0];
-                maxIndex[0] = maxCountArray1[0];
-        }
-        else {
-                maxVal = maxArray2[0];
-                maxIndex[0] = maxCountArray2[0];
-        }
-
-        if (minArray1[0] < minArray2[0]) {
-                minVal = minArray1[0];
-                minIndex[0] = minCountArray1[0];
-        }
-        else {
-                minVal = minArray2[0];
-                minIndex[0] = minCountArray2[0];
-        }
-	if (minVal + maxVal > 0) {
+__global__ void checkStable(REAL * particles,int *g_stable,REAL min_value,REAL max_value,int min_offset,int max_offset){
+	int temp;
+	
+	if (min_value + max_value > 0) {
 		g_stable[0] = 0;
-		temp = particles[minIndex[0]];
-                particles[minIndex[0]] = particles[maxIndex[0]];
-                particles[maxIndex[0]] = temp;
+		temp = particles[min_offset];
+                particles[min_offset] = particles[max_offset];
+                particles[max_offset] = temp;
 		
 	}
 	else g_stable[0] = 1;
 
 }
 
-int *highsToLows(int *maxIndex,int *minIndex,int *g_stable,int *c_stable,REAL * sumArray,REAL *boxR,REAL *g_itemp,REAL *g_otemp,REAL *maxArray1,REAL *maxArray2,REAL *maxCountArray1,REAL *maxCountArray2,REAL *minArray1,REAL *minArray2,REAL *minCountArray1,REAL *minCountArray2, REAL *particles,REAL *potentials,REAL *reducedSum,REAL *rangeMatrix, int N,double L,int blocks,int threads) {
+int *highsToLows(int max_offset,int min_offset,REAL max_value,REAL min_value,int *g_stable,int *c_stable,REAL * sumArray,REAL *boxR,REAL *g_itemp,REAL *g_otemp, REAL *particles,REAL *potentials,REAL *reducedSum,REAL *rangeMatrix, int N,double L,int blocks,int threads) {
 	
-	checkStable<<<blocks,threads>>>(particles,g_stable,maxIndex,minIndex,maxArray1,maxArray2,maxCountArray1,maxCountArray2,minArray1,minArray2,minCountArray1,minCountArray2);	
+	checkStable<<<blocks,threads>>>(particles,g_stable, min_value, max_value, min_offset, max_offset);	
 	cudaMemcpy(c_stable,g_stable,sizeof(int),cudaMemcpyDeviceToHost);
 
 	if (c_stable == 0) {
 		
-		checkRange<<<blocks,threads>>>(maxIndex,rangeMatrix,N);
+		checkRange<<<blocks,threads>>>(max_offset,rangeMatrix,N);
 		checkArea(L,N,blocks,threads,particles,potentials,reducedSum,rangeMatrix,g_itemp,g_otemp,boxR,sumArray); //look at area around max
 
-                checkRange<<<blocks,threads>>>(minIndex,rangeMatrix,N);
+                checkRange<<<blocks,threads>>>(min_offset,rangeMatrix,N);
                 checkArea(L,N,blocks,threads,particles,potentials,reducedSum,rangeMatrix,g_itemp,g_otemp,boxR,sumArray); //look at area around min
 	
 	}
@@ -1242,16 +1102,22 @@ int *highsToLows(int *maxIndex,int *minIndex,int *g_stable,int *c_stable,REAL * 
 	return c_stable;
 }
 
-void switcharoo(int *c_stable,int *g_stable,REAL *sumArray,int *maxIndex,int *minIndex,REAL *rangeMatrix,REAL *g_temp,REAL *substrate,REAL *extraArray,REAL *g_itemp,REAL *g_otemp,REAL *boxR,REAL *dosMatrix,REAL *maxArray1,REAL *maxArray2,REAL *maxCountArray1,REAL *maxCountArray2,REAL *minArray1,REAL *minArray2,REAL *minCountArray1,REAL *minCountArray2, REAL *particles,REAL *potentials,REAL *reducedSum,int N, double L,int slices,int threads, int blocks) {
+void switcharoo(int *c_stable,int *g_stable,REAL *sumArray,REAL *rangeMatrix,REAL *g_temp,REAL *substrate,REAL *extraArray,REAL *g_itemp,REAL *g_otemp,REAL *boxR,REAL *dosMatrix, REAL *particles,REAL *potentials,REAL *reducedSum,int N, double L,int slices,int threads, int blocks) {
+
+	int min_offset,max_offset;
+	REAL min_value,max_value;
+	  thrust::device_ptr<REAL> g_ptr =  thrust::device_pointer_cast(dosMatrix);
 	
         while (c_stable[0] == 0) {
-                cpyCuda<<<blocks,threads>>>(dosMatrix,minArray1, N*N);
-                cpyCuda<<<blocks,threads>>>(dosMatrix,maxArray1, N*N);
 		G_dos(sumArray,extraArray,boxR,particles,substrate,reducedSum,dosMatrix,potentials,g_temp, slices,N, L, threads,blocks) ;
-                runMax<<<blocks,threads>>>(maxArray1,maxArray2,maxCountArray1,maxCountArray2, N);
-                runMin<<<blocks,threads>>>(minArray1,minArray2,minCountArray1,minCountArray2, N);
-		c_stable = highsToLows( maxIndex,minIndex,g_stable,c_stable,sumArray,boxR,g_itemp,g_otemp,maxArray1,maxArray2,maxCountArray1,maxCountArray2,minArray1,minArray2,minCountArray1,minCountArray2,particles,potentials,reducedSum,rangeMatrix,  N,L, blocks, threads);
-		
+	     
+		min_offset = thrust::min_element(g_ptr, g_ptr + N) - g_ptr;
+		min_value = *(g_ptr + min_offset);
+
+		max_offset = thrust::max_element(g_ptr, g_ptr + N) - g_ptr;
+		max_value = *(g_ptr + max_offset);
+	
+		c_stable = highsToLows( max_offset,min_offset, max_value,min_value,g_stable,c_stable, sumArray,boxR,g_itemp,g_otemp,particles,potentials,reducedSum,rangeMatrix, N, L, blocks,threads);
 	}
 	
 	
@@ -1271,8 +1137,8 @@ void pairExchange(REAL *sumArray,REAL *particles,REAL *potentials,REAL *boxR,REA
 void glatzRelax(int threads,int blocks,double L,double N,REAL* potentials,REAL *substrate, REAL *particles, REAL *reducedSum,REAL *g_itemp, REAL *g_otemp,REAL *boxR,REAL *g_temp,REAL *dosMatrix) {
 
 //        int sizeShared = 512*sizeof(REAL)/blocks;
-        REAL *maxArray1,*maxArray2,*minArray1,*minArray2,*maxCountArray1,*maxCountArray2,*minCountArray1,*minCountArray2,*rangeMatrix,*extraArray,*sumArray,*hereSum;
-	int *g_stable,*c_stable,*maxIndex, *minIndex;
+        REAL *rangeMatrix,*extraArray,*sumArray,*hereSum;
+	int *g_stable,*c_stable;
 	int i,j,intN,slices;
 	intN = (int) N;
         slices = (intN*intN)/512 + 1;
@@ -1282,19 +1148,9 @@ void glatzRelax(int threads,int blocks,double L,double N,REAL* potentials,REAL *
         hereSum = C_zeros(10,hereSum);
 
         cudaMalloc(&extraArray,N*N*sizeof(REAL));
-	cudaMalloc(&maxArray1,N*N*sizeof(REAL));
-        cudaMalloc(&maxArray2,N*N*sizeof(REAL));
-        cudaMalloc(&maxCountArray1,N*N*sizeof(REAL));
-        cudaMalloc(&maxCountArray2,N*N*sizeof(REAL));
-        cudaMalloc(&minArray1,N*N*sizeof(REAL));
-        cudaMalloc(&minArray2,N*N*sizeof(REAL));
-        cudaMalloc(&minCountArray1,N*N*sizeof(REAL));
-        cudaMalloc(&minCountArray2,N*N*sizeof(REAL));
 	cudaMalloc(&rangeMatrix,N*N*sizeof(REAL));
 	cudaMalloc(&sumArray,10*sizeof(REAL));
 	cudaMalloc(&g_stable,sizeof(int));
-	cudaMalloc(&maxIndex,sizeof(int));
-	cudaMalloc(&minIndex,sizeof(int));
 	cudaMemcpy(sumArray,hereSum,10*sizeof(REAL),cudaMemcpyHostToDevice);
 	
 		
@@ -1316,20 +1172,11 @@ void glatzRelax(int threads,int blocks,double L,double N,REAL* potentials,REAL *
 
 
 //highs to lows
-	switcharoo(c_stable,g_stable,sumArray,maxIndex,minIndex,rangeMatrix,g_temp,substrate,extraArray,g_itemp,g_otemp,boxR,dosMatrix,maxArray1,maxArray2,maxCountArray1,maxCountArray2,minArray1,minArray2,minCountArray1,minCountArray2, particles,potentials,reducedSum,N,L, slices, threads, blocks);	
-
+	switcharoo(c_stable,g_stable,sumArray,rangeMatrix,g_temp,substrate,extraArray,g_itemp,g_otemp,boxR,dosMatrix, particles,potentials,reducedSum, N,  L,slices,threads, blocks);
 	errorAsk("switching highs to lows");
 
 
 	cudaFree(extraArray);
-	cudaFree(maxArray1);
-	cudaFree(maxArray2);
-	cudaFree(maxCountArray1);
-	cudaFree(maxCountArray2);
-	cudaFree(minArray1);
-	cudaFree(minArray2);
-	cudaFree(minCountArray1);
-	cudaFree(minCountArray2);
 	cudaFree(rangeMatrix);
 	cudaFree(g_stable);
 
@@ -1369,14 +1216,14 @@ int main(int argc,char *argv[])
 //	tSteps = 1000000; //for statistically accurate runs
 //	tSteps = 100000; //for potential runs
 //	tSteps = 100; // for seeing the fields
-	tSteps = 0;
+	tSteps = 1;
 //	relax = 1;
-	relax = 1; 
+	relax = 0; 
 	
 	REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*dosMatrix,*reducedSum,*g_itemp,*g_otemp,*g_temp,*hereDos;
 	xi = L/sqrt(sqrt(2));
-	xVar = L;
-	yVar = L;
+	xVar = 0;
+	yVar = 0;
 
 //	xi = 1; // xi/a	
 	clock_t begin = clock();
@@ -1425,6 +1272,8 @@ int main(int argc,char *argv[])
 	cudaMemcpy(boxR,hereBoxR,N*N*N*N*sizeof(REAL),cudaMemcpyHostToDevice);
 	cudaMemcpy(particles,hereP,N*N*sizeof(REAL),cudaMemcpyHostToDevice);
 
+//	printGPU(particles,N);
+
 //system is run but results arent output for the relaxation phase
         if (relax == 1) {
 		glatzRelax(threads, blocks, L, N, potentials,substrate, particles, reducedSum,g_itemp, g_otemp,boxR,g_temp,dosMatrix);
@@ -1444,6 +1293,8 @@ int main(int argc,char *argv[])
 		findJump(hereP,hereProb,herePot,particles,probabilities,potentials,substrate,reducedProb, N, xi, threads, blocks,eV,Ec,L,T,boxR,alphaOne,alphaTwo);
 	}
 
+	
+/*
         cudaMemcpy(hereP,particles,N*N*sizeof(REAL),cudaMemcpyDeviceToHost);
         FILE    *fp1;
         char    str1[256];
@@ -1455,7 +1306,7 @@ int main(int argc,char *argv[])
 //cleanup
 	fclose(fp1);
 
-
+*/
 
         cudaMemcpy(hereDos,dosMatrix,N*N*sizeof(REAL),cudaMemcpyDeviceToHost);
         FILE    *fp2;
