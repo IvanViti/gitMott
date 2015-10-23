@@ -726,11 +726,18 @@ REAL *createR(REAL *A,REAL *diffX, REAL *diffY,double N,double L,double xi) {
 	
 	intN = N;
 	for (idx = 0; idx < N*N*N*N; idx++) {
-
+/*
                 i = idx%(intN);
                 j = (idx%(intN*intN) - idx%(intN))/intN; 
                 k = (idx%(intN*intN*intN) - idx%(intN*intN))/(intN*intN) ; 
                 l = (idx%(intN*intN*intN*intN) - idx%(intN*intN*intN))/(intN*intN*intN) ;
+*/
+
+                k = idx%(intN);
+                l = (idx%(intN*intN) - idx%(intN))/intN;
+                i = (idx%(intN*intN*intN) - idx%(intN*intN))/(intN*intN) ;
+                j = (idx%(intN*intN*intN*intN) - idx%(intN*intN*intN))/(intN*intN*intN) ;
+
 
                 doublek = (double) k;
                 doublel = (double) l;
@@ -763,6 +770,14 @@ REAL *createR(REAL *A,REAL *diffX, REAL *diffY,double N,double L,double xi) {
 
 
 	}
+/*
+	for (i = 0; i < N; i++) {
+		for(j = 0; j < N ; j++) {
+			 cout<<A[1 + intN*1 + intN*intN*i + intN*intN*intN*j]<<" ";
+		}
+		cout<<endl;
+	}
+*/
 
 return A;
 	
@@ -1217,7 +1232,7 @@ int main(int argc,char *argv[])
 //	tSteps = 100000; //for potential runs
 //	tSteps = 1000; // for seeing the fields
 	tSteps = 0;
-	relax = 1;
+	relax = 0;
 //	relax = 0; 
 	
 	REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*dosMatrix,*reducedSum,*g_itemp,*g_otemp,*g_temp,*hereDos;
@@ -1259,6 +1274,7 @@ int main(int argc,char *argv[])
 	hereYDiff = new REAL[N*N];
 	hereXDiff = createDiff(hereXDiff, xVar, N);
 	hereYDiff = createDiff(hereYDiff, yVar, N);
+
 
 	hereS = new REAL[N*N];
 	hereS = createSub(hereS,muVar,N);
