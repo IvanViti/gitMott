@@ -72,6 +72,7 @@ return a;
 
 
 
+
 //Here, the gpu's find the general electric potential at each lattice site. 
 __global__ void findPotential(REAL *particles,REAL *potentials, double N,double L, REAL *boxR) { 
         int i,j,intx,inty,checkx,checky,distancex,distancey;
@@ -430,13 +431,13 @@ __global__ void particleJump(int x, int y,double randomNum,int N,REAL *reducedPr
 	int idx = blockIdx.x*blockDim.x + threadIdx.x;
         double pickedValue = randomNum*reducedProb[N*N -1];
 	int newx,newy,lastx,lasty;
-	if (idx > 0) {
+	if ((idx > 0) && (idx < N*N)) {
 		if ((reducedProb[idx - 1] < pickedValue) && (reducedProb[idx] > pickedValue)) {
 			lastx = idx/N;
         		lasty = idx%N;
 		        newx = G_mod(x - N/2 +  lastx,N);
 		        newy = G_mod(y - N/2 +  lasty,N);
-					
+			interaction(x,y,newx,newy,N,particles);			
 		}
 	}
 	if (idx == 0) {
@@ -445,11 +446,31 @@ __global__ void particleJump(int x, int y,double randomNum,int N,REAL *reducedPr
                         lasty = idx%N;
 		        newx = G_mod(x - N/2 +  lastx,N);
 		        newy = G_mod(y - N/2 +  lasty,N);
+			interaction(x,y,newx,newy,N,particles);
 		}	
 	}
 
-	interaction(x,y,newx,newy,N,particles);	
 
+}
+void printGPU(REAL *g_array,int size) {
+        REAL *c_array;
+        c_array =  new REAL[size*size];
+        int k,l;
+        cudaMemcpy(c_array,g_array,size*size*sizeof(REAL),cudaMemcpyDeviceToHost);
+        FILE    *fp1;
+        char    str1[256];
+        sprintf(str1, "particles.txt");
+        fp1 = fopen(str1, "w");
+        for (k = 0; k < size ; k++){
+                for(l = 0; l < size; l++) {
+
+                        fprintf(fp1, "%lf ",c_array[k + l*size]);
+                }
+        fprintf(fp1,"\n");
+        }
+
+//cleanup
+        fclose(fp1);
 }
 
 //second part of the heart of this code. Here the probabilities are summed and a number is picked from 0 to that number. The code then sums through the probabilities untill it reaches that number. In this way, probabilities which are higher will have a larger chance of getting picked. 
@@ -464,27 +485,6 @@ void particleScout(REAL *reducedProb,REAL* particles,REAL* probabilities,int x,i
         errorAsk("particleJump");
 }
 
-
-void printGPU(REAL *g_array,int size) {
-	REAL *c_array;
-        c_array =  new REAL[size*size];
-	int k,l;
-        cudaMemcpy(c_array,g_array,size*size*sizeof(REAL),cudaMemcpyDeviceToHost);
-        FILE    *fp1;
-        char    str1[256];
-        sprintf(str1, "particles.txt");
-        fp1 = fopen(str1, "w");
-        for (k = 0; k < size ; k++){
-		for(l = 0; l < size; l++) {
-
-                	fprintf(fp1, "%lf ",c_array[k + l*size]);
-		}
-	fprintf(fp1,"\n");
-        }
-
-//cleanup
-        fclose(fp1);
-}
 
 //the particles are picked here. This is also where the system is run from. (find potential, find probabilities, and move particle are done here)
 void findJump(REAL* hereP,REAL* hereProb,REAL* herePot,REAL *particles,REAL *probabilities,REAL *potentials,REAL *substrate,REAL *reducedProb,int N,double xi,int threads,int blocks,double eV,double Ec,double L,double T,REAL *boxR, double alphaOne, double alphaTwo) {
@@ -1215,15 +1215,15 @@ int main(int argc,char *argv[])
 	L = 1e-8;	
 //	tSteps = 1000000; //for statistically accurate runs
 //	tSteps = 100000; //for potential runs
-//	tSteps = 100; // for seeing the fields
-	tSteps = 1;
-//	relax = 1;
-	relax = 0; 
+//	tSteps = 1000; // for seeing the fields
+	tSteps = 0;
+	relax = 1;
+//	relax = 0; 
 	
 	REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*dosMatrix,*reducedSum,*g_itemp,*g_otemp,*g_temp,*hereDos;
 	xi = L/sqrt(sqrt(2));
-	xVar = 0;
-	yVar = 0;
+	xVar = L;
+	yVar = L;
 
 //	xi = 1; // xi/a	
 	clock_t begin = clock();
@@ -1294,7 +1294,7 @@ int main(int argc,char *argv[])
 	}
 
 	
-/*
+
         cudaMemcpy(hereP,particles,N*N*sizeof(REAL),cudaMemcpyDeviceToHost);
         FILE    *fp1;
         char    str1[256];
@@ -1306,7 +1306,7 @@ int main(int argc,char *argv[])
 //cleanup
 	fclose(fp1);
 
-*/
+
 
         cudaMemcpy(hereDos,dosMatrix,N*N*sizeof(REAL),cudaMemcpyDeviceToHost);
         FILE    *fp2;
