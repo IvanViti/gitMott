@@ -726,18 +726,18 @@ REAL *createR(REAL *A,REAL *diffX, REAL *diffY,double N,double L,double xi) {
 	
 	intN = N;
 	for (idx = 0; idx < N*N*N*N; idx++) {
-/*
+
                 i = idx%(intN);
                 j = (idx%(intN*intN) - idx%(intN))/intN; 
                 k = (idx%(intN*intN*intN) - idx%(intN*intN))/(intN*intN) ; 
                 l = (idx%(intN*intN*intN*intN) - idx%(intN*intN*intN))/(intN*intN*intN) ;
-*/
 
+/*
                 k = idx%(intN);
                 l = (idx%(intN*intN) - idx%(intN))/intN;
                 i = (idx%(intN*intN*intN) - idx%(intN*intN))/(intN*intN) ;
                 j = (idx%(intN*intN*intN*intN) - idx%(intN*intN*intN))/(intN*intN*intN) ;
-
+*/
 
                 doublek = (double) k;
                 doublel = (double) l;
@@ -748,17 +748,19 @@ REAL *createR(REAL *A,REAL *diffX, REAL *diffY,double N,double L,double xi) {
                 kObs = C_mod(kNew,N);
                 lObs = C_mod(lNew,N);
 		
-		diffXThere = diffX[kObs];
-		diffXHere = diffX[i];
-		if((kNew < 0) || (kNew > N)) {
-			diffXHere = -diffX[i];
-			diffXThere = -diffX[kObs];
-		}
-		diffYThere = diffY[lObs];
-		diffYHere = diffY[j];
-		if((lNew < 0) || (lNew > N)) {
-			diffYHere = -diffY[j];
-                        diffYThere = -diffY[lObs];
+                diffXHere = diffX[i + intN*j];
+                diffXThere = diffX[kObs + intN*lObs];
+
+                if((kNew < 0) || (kNew > N)) {
+                        diffXHere = -diffX[i + intN*j];
+                        diffXThere = -diffX[kObs + intN*lObs];
+                }
+                diffYHere = diffY[i + intN*j];
+                diffYThere = diffY[kObs + intN*lObs];
+
+                if((lNew < 0) || (lNew > N)) {
+                        diffYHere = -diffY[i + intN*j];
+                        diffYThere = -diffY[kObs + intN*lObs];
                 }
 
 		deltaX = diffXHere - (diffXThere + L*(doublek - N/2));
@@ -1223,7 +1225,7 @@ int main(int argc,char *argv[])
 //	T = 1;
 	alphaOne = 1; // technically combined with density of states
 	alphaTwo = 1e7; // technically combined with e^2 and epsilon
-	T = input;
+	T = 1;
 //	nParticles = input;
 	nParticles = .5*N*N;
 //	nParticles = 1;
@@ -1232,13 +1234,13 @@ int main(int argc,char *argv[])
 //	tSteps = 100000; //for potential runs
 //	tSteps = 1000; // for seeing the fields
 	tSteps = 0;
-	relax = 0;
+	relax = 1;
 //	relax = 0; 
 	
 	REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*dosMatrix,*reducedSum,*g_itemp,*g_otemp,*g_temp,*hereDos;
 	xi = L/sqrt(sqrt(2));
-	xVar = L;
-	yVar = L;
+	xVar = input;
+	yVar = input;
 
 //	xi = 1; // xi/a	
 	clock_t begin = clock();
