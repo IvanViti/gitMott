@@ -78,6 +78,7 @@ __global__ void findPotential(REAL *particles,REAL *potentials, double N,double 
         int i,j,intx,inty,checkx,checky,distancex,distancey;
 	int intN = (int) N;
         int checkRange = 50; //(*2)
+	        double changeToV = 3.6e-10; // Ke*Q/Kd 
   int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
 
         double k,l,sum,distanceTerm;
@@ -106,7 +107,7 @@ __global__ void findPotential(REAL *particles,REAL *potentials, double N,double 
                                         }
                                 }
                         }
-                potentials[i + intN*j] = sum;
+                potentials[i + intN*j] = sum*changeToV;
 
 	}
 }
@@ -116,7 +117,7 @@ __global__ void potOnParticles(REAL *particles,REAL *potentials,int intN, double
         double N = (double) intN;
         int checkRange = N/2; //(*2)
   int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
-
+	        double changeToV = 3.6e-10; // Ke*Q/Kd 
         double k,l,sum,distanceTerm;
 //      double deltax,deltay;
          if(idx<intN*intN) {
@@ -143,7 +144,7 @@ __global__ void potOnParticles(REAL *particles,REAL *potentials,int intN, double
                                 }
                         }
 		}
-                potentials[i + intN*j] = sum*particles[i + intN*j];
+                potentials[i + intN*j] = changeToV*sum*particles[i + intN*j];
 
         }
 
@@ -930,7 +931,9 @@ __global__ void potOnParticles2(REAL *particles,REAL *potentials,REAL *rangeMatr
         int i,j,intx,inty,checkx,checky,distancex,distancey;
         double N = (double) intN;
         int checkRange = N/2; //(*2)
+
 	if (rangeMatrix[k + intN*l] == 1) {
+	        double changeToV = 3.6e-10; // Ke*Q/Kd 
   int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
 
         double k,l,sum,distanceTerm;
@@ -959,7 +962,7 @@ __global__ void potOnParticles2(REAL *particles,REAL *potentials,REAL *rangeMatr
                                 }
                         }
                 }
-                potentials[i + intN*j] = sum*particles[i + intN*j];
+                potentials[i + intN*j] = changeToV*sum*particles[i + intN*j];
 
         }
 
@@ -1250,7 +1253,8 @@ int main(int argc,char *argv[])
 //	Ec = 1;
 //	T = 1;
 	alphaOne = 1; // technically combined with density of states
-	alphaTwo = 1e7; // technically combined with e^2 and epsilon
+//	alphaTwo = 1e7; // technically combined with e^2 and epsilon
+	alphaTwo = 1.16e4; //C/Kb
 	T = 1;
 //	nParticles = input;
 	nParticles = .5*N*N;
@@ -1264,9 +1268,9 @@ int main(int argc,char *argv[])
 //	relax = 0; 
 	
 	REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*dosMatrix,*reducedSum,*g_itemp,*g_otemp,*g_temp,*hereDos;
-	xi = L/sqrt(sqrt(2));
-	xVar = input;
-	yVar = input;
+	xi = L;
+	xVar = input*L;
+	yVar = input*L;
 
 //	xi = 1; // xi/a	
 	clock_t begin = clock();
