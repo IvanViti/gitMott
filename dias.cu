@@ -166,7 +166,6 @@ bool errorAsk(const char *s="n/a")
  __device__ double findBlockade(int p,int thisp,double Ec)
 {
 	
-
         if ((thisp == 1) && (p == 0 )) {
                 return 0; //no blockade penalty
         }
@@ -304,6 +303,8 @@ __global__ void findProbabilities(int N,double xi,REAL *probabilities,REAL *part
  __device__ void interaction(int x,int y,int newx,int newy,int N,REAL *particles) {
 	double current,totalCurrent = 0;
 	int whichWay = 0;
+	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+	if(idx < 1) {
         if ((particles[x + y*N] == 0 ) && ( particles[newx + newy*N] == 0 ) ) {
                 current = 0;
         }
@@ -363,6 +364,7 @@ __global__ void findProbabilities(int N,double xi,REAL *probabilities,REAL *part
 
 
 totalCurrent = totalCurrent + current;
+}
 }
 
 //this section does the various outputs such as particle positions or general electric potential
@@ -538,14 +540,17 @@ __global__ void G_subE(REAL *substrate,REAL *particles,REAL *combined,int intN) 
 
 }
 __global__ void fillSum(int index,int intN,int addSub,REAL *sumArray,REAL numToInsert) {
-
+	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+	if(idx < 1) {
 	sumArray[index] = addSub*numToInsert;
-
+	}
 }
 
 __global__ void particleSwitch(int i,int j,int intN,REAL *particles) {
+
 	if (particles[i + j*intN] == 0) particles[i + j*intN]= 1;
 	else particles[i + j*intN]= 0;
+
 }
 
 __global__ void dosPut(int i,int j,int intN,REAL *dosMatrix,REAL sum) {
@@ -826,21 +831,29 @@ return A;
 
 __global__ void particleSwap(int i,int j,int k,int l,int intN,REAL *particles) {
 	int temp;
+	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+
+	if (idx < 1) {
 	temp = particles[i + j*intN];
         particles[i + j*intN]= particles[k + l*intN];
 	particles[k + l*intN] = temp;
+	}
 }
 
 __device__ void g_particleSwap(int i,int j,int k,int l,int intN,REAL *particles){
 	
         int temp;
-        temp = particles[i + j*intN];
+         int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+	if (idx < 1) {
+	temp = particles[i + j*intN];
         particles[i + j*intN]= particles[k + l*intN];
         particles[k + l*intN] = temp;	
+	}
 }
 
 __global__ void particlePick(int i,int j,int intN,REAL *particles,REAL *sumArray) {
-
+	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+	if (idx < 1){
 	if ((-sumArray[0] < sumArray[1] ) ||(-sumArray[0] < sumArray[2] ) ||(-sumArray[0] < sumArray[3] ) ||(-sumArray[0] < sumArray[4] ) ) {
 
         int iPrev,jPrev,iPost,jPost;
@@ -866,6 +879,7 @@ __global__ void particlePick(int i,int j,int intN,REAL *particles,REAL *sumArray
                         g_particleSwap(i,j,i,jPost,intN,particles);
 		}
 
+	}
 	}
 }
 
@@ -953,22 +967,30 @@ __global__ void potOnParticles2(REAL *particles,REAL *potentials,REAL *rangeMatr
 }
 
 __global__ void fillSum2(int index,int intN,int addSub,REAL result,REAL *sumArray,REAL *rangeMatrix,int k, int l) {
+	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+	if (idx < 1) {
 	if (rangeMatrix[k + intN*l] == 1) {
         sumArray[index] = addSub*result;
 	}
+	}
 }
 __global__ void particleSwap2(int i,int j,int k,int l,int intN,REAL *particles,REAL *rangeMatrix, int q, int w) {
+  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+	if (idx < 1) {
 	if (rangeMatrix[q + intN*w] == 1) {
 
         int temp;
         temp = particles[i + j*intN];
         particles[i + j*intN]= particles[k + l*intN];
         particles[k + l*intN] = temp;
-
+	}
 	}
 }
 
 __global__ void particlePick2(int i,int j,int intN,REAL *particles,REAL *sumArray,REAL *rangeMatrix,int q, int w) {
+	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+
+	if (idx < 1) {
 	 if (rangeMatrix[q + intN*w] == 1) {
 	
         if ((-sumArray[0] < sumArray[1] ) ||(-sumArray[0] < sumArray[2] ) ||(-sumArray[0] < sumArray[3] ) ||(-sumArray[0] < sumArray[4] ) ) {
@@ -997,6 +1019,7 @@ __global__ void particlePick2(int i,int j,int intN,REAL *particles,REAL *sumArra
      }
 
         }
+	}
 	}
 }
 
@@ -1089,8 +1112,10 @@ __global__ void checkRange(int index,REAL *rangeMatrix,int intN) {
 
 __global__ void checkStable(REAL * particles,int *g_stable,REAL min_value,REAL max_value,int min_offset,int max_offset){
 	int temp;
-	
-	if (min_value + max_value > 0) {
+	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+
+	if(idx < 1) {	
+	if (min_value + max_value < 0) {
 		g_stable[0] = 0;
 		temp = particles[min_offset];
                 particles[min_offset] = particles[max_offset];
@@ -1098,6 +1123,7 @@ __global__ void checkStable(REAL * particles,int *g_stable,REAL min_value,REAL m
 		
 	}
 	else g_stable[0] = 1;
+	}
 
 }
 
