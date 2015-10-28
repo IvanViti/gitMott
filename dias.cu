@@ -205,9 +205,9 @@ __global__ void findProbabilities(int N,double xi,REAL *probabilities,REAL *part
 	double potConstant,currentPart,distancePart,blockadePart,potentialPart,substratePart;
 //	double doublej, doublei,r;
 	
-	potConstant = 1.17e-13;
+//	potConstant = 1.17e-13;
 //	potConstant = Ec;
-//	potConstant = 0;
+	potConstant = 1;
 	
 	if(idx<N*N)
     {         
@@ -301,9 +301,10 @@ __global__ void findProbabilities(int N,double xi,REAL *probabilities,REAL *part
 };
 
 //figures out which way the electron jump will occur and also calculates the current or jump distance (since particle movement is also done here).
- __device__ void interaction(int x,int y,int newx,int newy,int N,REAL *particles) {
+ __device__ void interaction(int x,int y,int newx,int newy,int N,REAL *particles,REAL *jumpRecord) {
 	double current,totalCurrent = 0;
 	int whichWay = 0;
+	REAL dx2,dy2;
 	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
 	if(idx < 1) {
         if ((particles[x + y*N] == 0 ) && ( particles[newx + newy*N] == 0 ) ) {
@@ -363,8 +364,18 @@ __global__ void findProbabilities(int N,double xi,REAL *probabilities,REAL *part
                 particles[newx + newy*N] = particles[newx + newy*N] - 1;
 	}
 
-
+int found = 0;
 totalCurrent = totalCurrent + current;
+	for (int n = 0; n < 10000;n++) {
+		if( found == 0 && jumpRecord[n] == 999) {
+			found = 1;
+			dx2 = (REAL) ((x - newx) * (x - newx));
+			dy2 = (REAL) ((y - newy) * (y - newy));
+
+			jumpRecord[n] = sqrtf(dx2 + dy2);
+		}		
+	}
+
 }
 }
 
@@ -429,7 +440,7 @@ void countParticles(REAL* hereP, int N) {
 
 }
 
-__global__ void particleJump(int x, int y,double randomNum,int N,REAL *reducedProb,REAL *particles) {
+__global__ void particleJump(int x, int y,double randomNum,int N,REAL *reducedProb,REAL *particles,REAL *jumpRecord) {
 	
 	int idx = blockIdx.x*blockDim.x + threadIdx.x;
         double pickedValue = randomNum*reducedProb[N*N -1];
@@ -440,7 +451,7 @@ __global__ void particleJump(int x, int y,double randomNum,int N,REAL *reducedPr
         		lasty = idx%N;
 		        newx = G_mod(x - N/2 +  lastx,N);
 		        newy = G_mod(y - N/2 +  lasty,N);
-			interaction(x,y,newx,newy,N,particles);			
+			interaction(x,y,newx,newy,N,particles,jumpRecord);			
 		}
 	}
 	if (idx == 0) {
@@ -449,7 +460,7 @@ __global__ void particleJump(int x, int y,double randomNum,int N,REAL *reducedPr
                         lasty = idx%N;
 		        newx = G_mod(x - N/2 +  lastx,N);
 		        newy = G_mod(y - N/2 +  lasty,N);
-			interaction(x,y,newx,newy,N,particles);
+			interaction(x,y,newx,newy,N,particles,jumpRecord);
 		}	
 	}
 
@@ -477,20 +488,20 @@ void printGPU(REAL *g_array,int size) {
 }
 
 //second part of the heart of this code. Here the probabilities are summed and a number is picked from 0 to that number. The code then sums through the probabilities untill it reaches that number. In this way, probabilities which are higher will have a larger chance of getting picked. 
-void particleScout(REAL *reducedProb,REAL* particles,REAL* probabilities,int x,int y,int N,double randomNum,int blocks, int threads) {
+void particleScout(REAL *reducedProb,REAL* particles,REAL* probabilities,REAL* jumpRecord,int x,int y,int N,double randomNum,int blocks, int threads) {
         
 	thrust::device_ptr<REAL> g_go = thrust::device_pointer_cast(probabilities);
         thrust::device_ptr<REAL> g_return = thrust::device_pointer_cast(reducedProb);
 
         thrust::inclusive_scan(g_go, g_go + N*N, g_return); // in-place scan 
 		
-	particleJump<<<blocks,threads>>>( x, y,randomNum,N,reducedProb,particles);
+	particleJump<<<blocks,threads>>>( x, y,randomNum,N,reducedProb,particles,jumpRecord);
         errorAsk("particleJump");
 }
 
 
 //the particles are picked here. This is also where the system is run from. (find potential, find probabilities, and move particle are done here)
-void findJump(REAL* hereP,REAL* hereProb,REAL* herePot,REAL *particles,REAL *probabilities,REAL *potentials,REAL *substrate,REAL *reducedProb,int N,double xi,int threads,int blocks,double eV,double Ec,double L,double T,REAL *boxR, double alphaOne, double alphaTwo) {
+void findJump(REAL* hereP,REAL* hereProb,REAL* herePot,REAL *particles,REAL *probabilities,REAL *potentials,REAL *substrate,REAL *reducedProb,REAL *jumpRecord,int N,double xi,int threads,int blocks,double eV,double Ec,double L,double T,REAL *boxR, double alphaOne, double alphaTwo) {
 	int x,y;	
 	double randomNum;
 	 x = floor(drand48()*N);
@@ -512,7 +523,7 @@ void findJump(REAL* hereP,REAL* hereProb,REAL* herePot,REAL *particles,REAL *pro
 //        printGPU(probabilities,N);	
 	
 	randomNum = drand48();
-	particleScout(reducedProb, particles,probabilities, x, y, N,randomNum, blocks, threads);
+	particleScout(reducedProb, particles,probabilities,jumpRecord, x, y, N,randomNum, blocks, threads);
 }
 
 __global__ void G_stackE(REAL *particles,REAL *stacked,int intN) {
@@ -1229,6 +1240,15 @@ void glatzRelax(int threads,int blocks,double L,double N,REAL* potentials,REAL *
 
 }
 
+__global__ void	jumpFill(REAL* jumpRecord,int N) {
+          int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+	  if (idx < N) {
+		jumpRecord[idx] = 999;
+		
+		
+	}
+
+}
 
 
 int main(int argc,char *argv[])
@@ -1259,15 +1279,15 @@ int main(int argc,char *argv[])
 //	nParticles = input;
 	nParticles = .5*N*N;
 //	nParticles = 1;
-	L = 1e-8;	
+	L = 7e-6;	
 //	tSteps = 1000000; //for statistically accurate runs
 //	tSteps = 100000; //for potential runs
-//	tSteps = 1000; // for seeing the fields
-	tSteps = 0;
-	relax = 1;
-//	relax = 0; 
+	tSteps = 1; // for seeing the fields
+//	tSteps = 0;
+//	relax = 1;
+	relax = 0; 
 	
-	REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*dosMatrix,*reducedSum,*g_itemp,*g_otemp,*g_temp,*hereDos;
+	REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*dosMatrix,*reducedSum,*g_itemp,*g_otemp,*g_temp,*hereDos,*jumpRecord;
 	xi = L;
 	xVar = input*L;
 	yVar = input*L;
@@ -1286,6 +1306,7 @@ int main(int argc,char *argv[])
 	cudaMalloc(&substrate,N*N*sizeof(REAL));
 	cudaMalloc(&dosMatrix,N*N*sizeof(REAL));
         cudaMalloc(&reducedSum,N*N*sizeof(REAL));
+        cudaMalloc(&jumpRecord,N*N*sizeof(REAL));
         cudaMalloc(&g_itemp,512*sizeof(REAL));
         cudaMalloc(&g_otemp,512*sizeof(REAL));
 	cudaMalloc(&g_temp,512*sizeof(REAL));
@@ -1321,7 +1342,7 @@ int main(int argc,char *argv[])
 	cudaMemcpy(particles,hereP,N*N*sizeof(REAL),cudaMemcpyHostToDevice);
 
 //	printGPU(particles,N);
-
+	jumpFill<<<blocks,threads>>>(jumpRecord,10000);
 //system is run but results arent output for the relaxation phase
         if (relax == 1) {
 		glatzRelax(threads, blocks, L, N, potentials,substrate, particles, reducedSum,g_itemp, g_otemp,boxR,g_temp,dosMatrix);
@@ -1338,11 +1359,13 @@ int main(int argc,char *argv[])
 
 	for(t = 0; t < tSteps ; t++) {
 		countThese = 1;
-		findJump(hereP,hereProb,herePot,particles,probabilities,potentials,substrate,reducedProb, N, xi, threads, blocks,eV,Ec,L,T,boxR,alphaOne,alphaTwo);
+		findJump(hereP,hereProb,herePot,particles,probabilities,potentials,substrate,reducedProb,jumpRecord, N, xi, threads, blocks,eV,Ec,L,T,boxR,alphaOne,alphaTwo);
 	}
 
 	
-
+	printGPU(potentials,N);
+	
+/*
         cudaMemcpy(hereP,particles,N*N*sizeof(REAL),cudaMemcpyDeviceToHost);
         FILE    *fp1;
         char    str1[256];
@@ -1353,7 +1376,7 @@ int main(int argc,char *argv[])
         }
 //cleanup
 	fclose(fp1);
-
+*/
 
 
         cudaMemcpy(hereDos,dosMatrix,N*N*sizeof(REAL),cudaMemcpyDeviceToHost);
@@ -1383,7 +1406,7 @@ int main(int argc,char *argv[])
 	cudaFree(g_otemp);
 	cudaFree(g_temp);
 	cudaFree(dosMatrix);
-
+	cudaFree(jumpRecord);
 	
 	clock_t end = clock();
 //  	double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
