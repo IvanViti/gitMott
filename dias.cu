@@ -5,7 +5,7 @@
 
 /*
 	Code guide: first matrices are initialized. they are used to keep track of the particles, the probabilities to jump, the substrate, and the general electric potential.
-	Input parameters are also taken in. Currently the code takes in one parameter. The rest of the parameters must be adjusted manually and the code must be recompiled. The general electric potential is calculated in cuda. This reduces a n^4 problem to a n^2 one. A site is picked at random at the CPU (part of the monte-carlo process) and the probabilities of interaction with the particles around it are calculated at the GPU. The probabilities are then returned to the CPU where the second part of the Monte-Carlo algorithm occurs. Here, the site which the subject particle will interact with is chosen randomly but with weights according to the probabilities. The jump is made, and the system starts over.  
+	Input parameters are also taken in. Currently the code takes in one parameter. The rest of the parameters must be adjusted manually and the code must be recompiled. The general electric potential is calculated in cuda. This reduces a n^4 problem to a n^2 one. A site is picked at random at the CPU (part of the monte-carlo process) and the probabilities with the particles around it are calculated at the GPU. The probabilities are then returned to the CPU where the second part of the Monte-Carlo algorithm occurs. Here, the site which the subject particle will interact with is chosen randomly but with weights according to the probabilities. The jump is made, and the system starts over.  
 
 
 
@@ -188,7 +188,7 @@ bool errorAsk(const char *s="n/a")
         if ((thisp == 2) && (p == 1 )) {
                 return 0;
         }
-	if ((thisp == 2) && (p == 2 )) { //no interaction
+	if ((thisp == 2) && (p == 2 )) { //no chance
                 return 1000*Ec; 
         }
 
@@ -299,14 +299,28 @@ __global__ void findProbabilities(int N,double xi,REAL *probabilities,REAL *part
 	}
 
 };
+__device__ void fillRecord(REAL *jumpRecord,REAL fillVal,int N) {
+int found = 0;
+int n = 0;
+	while ((found == 0) && (n < N)) {
+		if( jumpRecord[n] == 999) {
+			found = 1;
+			jumpRecord[n] = fillVal; 
+			
+		}
+		n++;
+	}
+}
+
+
 
 //figures out which way the electron jump will occur and also calculates the current or jump distance (since particle movement is also done here).
  __device__ void interaction(int x,int y,int newx,int newy,int N,REAL *particles,REAL *jumpRecord) {
 	double current,totalCurrent = 0;
 	int whichWay = 0;
-	REAL dx2,dy2;
-	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
-	if(idx < 1) {
+	REAL dx2,dy2,fillVal;
+//	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+//	if(idx < 1) {
         if ((particles[x + y*N] == 0 ) && ( particles[newx + newy*N] == 0 ) ) {
                 current = 0;
         }
@@ -364,19 +378,15 @@ __global__ void findProbabilities(int N,double xi,REAL *probabilities,REAL *part
                 particles[newx + newy*N] = particles[newx + newy*N] - 1;
 	}
 
-int found = 0;
 totalCurrent = totalCurrent + current;
-	for (int n = 0; n < 10000;n++) {
-		if( found == 0 && jumpRecord[n] == 999) {
-			found = 1;
-			dx2 = (REAL) ((x - newx) * (x - newx));
-			dy2 = (REAL) ((y - newy) * (y - newy));
 
-			jumpRecord[n] = sqrtf(dx2 + dy2);
-		}		
+		dx2 = (REAL) ((x - newx) * (x - newx));
+                dy2 = (REAL) ((y - newy) * (y - newy));
+		fillVal = sqrtf(dx2 + dy2);
+	if((fillVal < 50)  && (particles[x + y*N] != particles[newx + newy*N])) {
+		fillRecord(jumpRecord,fillVal,10000);
 	}
-
-}
+//}
 }
 
 //this section does the various outputs such as particle positions or general electric potential
@@ -452,6 +462,8 @@ __global__ void particleJump(int x, int y,double randomNum,int N,REAL *reducedPr
 		        newx = G_mod(x - N/2 +  lastx,N);
 		        newy = G_mod(y - N/2 +  lasty,N);
 			interaction(x,y,newx,newy,N,particles,jumpRecord);			
+//fillRecord(jumpRecord,pickedValue, 10000);
+
 		}
 	}
 	if (idx == 0) {
@@ -463,17 +475,18 @@ __global__ void particleJump(int x, int y,double randomNum,int N,REAL *reducedPr
 			interaction(x,y,newx,newy,N,particles,jumpRecord);
 		}	
 	}
-
+//	fillRecord(jumpRecord,pickedValue, 10000);
+	
 
 }
-void printGPU(REAL *g_array,int size) {
+void printBoxGPU(REAL *g_array,int size) {
         REAL *c_array;
         c_array =  new REAL[size*size];
         int k,l;
         cudaMemcpy(c_array,g_array,size*size*sizeof(REAL),cudaMemcpyDeviceToHost);
         FILE    *fp1;
         char    str1[256];
-        sprintf(str1, "particles.txt");
+        sprintf(str1, "box.txt");
         fp1 = fopen(str1, "w");
         for (k = 0; k < size ; k++){
                 for(l = 0; l < size; l++) {
@@ -482,10 +495,29 @@ void printGPU(REAL *g_array,int size) {
                 }
         fprintf(fp1,"\n");
         }
-
 //cleanup
         fclose(fp1);
+	delete[] c_array;
 }
+
+void printLineGPU(REAL *g_array,int size) {
+        REAL *c_array;
+        c_array =  new REAL[size];
+        int k;
+        cudaMemcpy(c_array,g_array,size*sizeof(REAL),cudaMemcpyDeviceToHost);
+        FILE    *fp1;
+        char    str1[256];
+        sprintf(str1, "line.txt");
+        fp1 = fopen(str1, "w");
+        for (k = 0; k < size ; k++){
+
+                        fprintf(fp1, "%lf ",c_array[k]);
+        }
+//cleanup
+        fclose(fp1);
+	delete[] c_array;
+}
+
 
 //second part of the heart of this code. Here the probabilities are summed and a number is picked from 0 to that number. The code then sums through the probabilities untill it reaches that number. In this way, probabilities which are higher will have a larger chance of getting picked. 
 void particleScout(REAL *reducedProb,REAL* particles,REAL* probabilities,REAL* jumpRecord,int x,int y,int N,double randomNum,int blocks, int threads) {
@@ -552,10 +584,10 @@ __global__ void G_subE(REAL *substrate,REAL *particles,REAL *combined,int intN) 
 
 }
 __global__ void fillSum(int index,int intN,int addSub,REAL *sumArray,REAL numToInsert) {
-	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
-	if(idx < 1) {
+//	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+//	if(idx < 1) {
 	sumArray[index] = addSub*numToInsert;
-	}
+//	}
 }
 
 __global__ void particleSwitch(int i,int j,int intN,REAL *particles) {
@@ -843,29 +875,29 @@ return A;
 
 __global__ void particleSwap(int i,int j,int k,int l,int intN,REAL *particles) {
 	int temp;
-	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+//	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
 
-	if (idx < 1) {
+//	if (idx < 1) {
 	temp = particles[i + j*intN];
         particles[i + j*intN]= particles[k + l*intN];
 	particles[k + l*intN] = temp;
-	}
+//	}
 }
 
 __device__ void g_particleSwap(int i,int j,int k,int l,int intN,REAL *particles){
 	
         int temp;
-         int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
-	if (idx < 1) {
+ //        int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+//	if (idx < 1) {
 	temp = particles[i + j*intN];
         particles[i + j*intN]= particles[k + l*intN];
         particles[k + l*intN] = temp;	
-	}
+//	}
 }
 
 __global__ void particlePick(int i,int j,int intN,REAL *particles,REAL *sumArray) {
-	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
-	if (idx < 1){
+//	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+//	if (idx < 1){
 	if ((-sumArray[0] < sumArray[1] ) ||(-sumArray[0] < sumArray[2] ) ||(-sumArray[0] < sumArray[3] ) ||(-sumArray[0] < sumArray[4] ) ) {
 
         int iPrev,jPrev,iPost,jPost;
@@ -892,7 +924,7 @@ __global__ void particlePick(int i,int j,int intN,REAL *particles,REAL *sumArray
 		}
 
 	}
-	}
+//	}
 }
 
 void testMove(double L,int i, int j,int intN,int blocks, int threads,REAL *particles,REAL *potentials,REAL *g_itemp, REAL *g_otemp,REAL *boxR,REAL *sumArray) {
@@ -981,16 +1013,16 @@ __global__ void potOnParticles2(REAL *particles,REAL *potentials,REAL *rangeMatr
 }
 
 __global__ void fillSum2(int index,int intN,int addSub,REAL result,REAL *sumArray,REAL *rangeMatrix,int k, int l) {
-	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
-	if (idx < 1) {
+//	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+//	if (idx < 1) {
 	if (rangeMatrix[k + intN*l] == 1) {
         sumArray[index] = addSub*result;
 	}
-	}
+//	}
 }
 __global__ void particleSwap2(int i,int j,int k,int l,int intN,REAL *particles,REAL *rangeMatrix, int q, int w) {
-  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
-	if (idx < 1) {
+//  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+//	if (idx < 1) {
 	if (rangeMatrix[q + intN*w] == 1) {
 
         int temp;
@@ -998,13 +1030,13 @@ __global__ void particleSwap2(int i,int j,int k,int l,int intN,REAL *particles,R
         particles[i + j*intN]= particles[k + l*intN];
         particles[k + l*intN] = temp;
 	}
-	}
+//	}
 }
 
 __global__ void particlePick2(int i,int j,int intN,REAL *particles,REAL *sumArray,REAL *rangeMatrix,int q, int w) {
-	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+//	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
 
-	if (idx < 1) {
+//	if (idx < 1) {
 	 if (rangeMatrix[q + intN*w] == 1) {
 	
         if ((-sumArray[0] < sumArray[1] ) ||(-sumArray[0] < sumArray[2] ) ||(-sumArray[0] < sumArray[3] ) ||(-sumArray[0] < sumArray[4] ) ) {
@@ -1034,7 +1066,7 @@ __global__ void particlePick2(int i,int j,int intN,REAL *particles,REAL *sumArra
 
         }
 	}
-	}
+//	}
 }
 
 
@@ -1126,9 +1158,9 @@ __global__ void checkRange(int index,REAL *rangeMatrix,int intN) {
 
 __global__ void checkStable(REAL * particles,int *g_stable,REAL min_value,REAL max_value,int min_offset,int max_offset){
 	int temp;
-	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+//	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
 
-	if(idx < 1) {	
+//	if(idx < 1) {	
 	if (min_value + max_value < 0) {
 		g_stable[0] = 0;
 		temp = particles[min_offset];
@@ -1137,7 +1169,7 @@ __global__ void checkStable(REAL * particles,int *g_stable,REAL min_value,REAL m
 		
 	}
 	else g_stable[0] = 1;
-	}
+//	}
 
 }
 
@@ -1275,22 +1307,23 @@ int main(int argc,char *argv[])
 	alphaOne = 1; // technically combined with density of states
 //	alphaTwo = 1e7; // technically combined with e^2 and epsilon
 	alphaTwo = 1.16e4; //C/Kb
-	T = 1;
+	T = input;
 //	nParticles = input;
 	nParticles = .5*N*N;
 //	nParticles = 1;
-	L = 7e-6;	
+//	L = 7e-6;	
+	L = 1e-8; //10 nm
 //	tSteps = 1000000; //for statistically accurate runs
-//	tSteps = 100000; //for potential runs
-	tSteps = 1; // for seeing the fields
+	tSteps = 100; //for potential runs
+//	tSteps = 1; // for seeing the fields
 //	tSteps = 0;
 //	relax = 1;
 	relax = 0; 
 	
 	REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*dosMatrix,*reducedSum,*g_itemp,*g_otemp,*g_temp,*hereDos,*jumpRecord;
 	xi = L;
-	xVar = input*L;
-	yVar = input*L;
+	xVar = .3*L;
+	yVar = .3*L;
 
 //	xi = 1; // xi/a	
 	clock_t begin = clock();
@@ -1363,8 +1396,8 @@ int main(int argc,char *argv[])
 	}
 
 	
-	printGPU(potentials,N);
-	
+	printBoxGPU(potentials,N);
+	printLineGPU(jumpRecord,10000);
 /*
         cudaMemcpy(hereP,particles,N*N*sizeof(REAL),cudaMemcpyDeviceToHost);
         FILE    *fp1;
