@@ -801,14 +801,14 @@ REAL *createR(REAL *A,REAL *diffX, REAL *diffY,double N,double L,double xi) {
                 diffXThere = diffX[kObs + intN*lObs];
 
                 if((kNew < 0) || (kNew > N)) {
-                        diffXHere = -diffX[i + intN*j];
+      //                  diffXHere = -diffX[i + intN*j];
                         diffXThere = -diffX[kObs + intN*lObs];
                 }
                 diffYHere = diffY[i + intN*j];
                 diffYThere = diffY[kObs + intN*lObs];
 
                 if((lNew < 0) || (lNew > N)) {
-                        diffYHere = -diffY[i + intN*j];
+        //                diffYHere = -diffY[i + intN*j];
                         diffYThere = -diffY[kObs + intN*lObs];
                 }
 
@@ -824,7 +824,7 @@ REAL *createR(REAL *A,REAL *diffX, REAL *diffY,double N,double L,double xi) {
 /*
 	for (i = 0; i < N; i++) {
 		for(j = 0; j < N ; j++) {
-			 cout<<A[3 + intN*98 + intN*intN*i + intN*intN*intN*j]<<" ";
+			 cout<<A[i + intN*j + intN*intN*4 + intN*intN*intN*4]<<" ";
 		}
 		cout<<endl;
 	}
@@ -1325,7 +1325,7 @@ int main(int argc,char *argv[])
 	alphaOne = 1; // technically combined with density of states
 //	alphaTwo = 1e7; // technically combined with e^2 and epsilon
 	alphaTwo = 1.16e4; //C/Kb
-	T = input;
+	T = 100;
 //	nParticles = input;
 	nParticles = .5*N*N;
 //	nParticles = 1;
@@ -1333,15 +1333,15 @@ int main(int argc,char *argv[])
 	L = 1e-8; //10 nm
 //	tSteps = 1000000; //for statistically accurate runs
 //	tSteps = 100; //for potential runs
-	tSteps = 0; // for seeing the fields
+	tSteps = 1; // for seeing the fields
 //	Steps = 0;
 //	relax = 1;
-	relax = 1; 
+	relax = 0; 
 	
 	REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*dosMatrix,*reducedSum,*g_itemp,*g_otemp,*g_temp,*hereDos,*jumpRecord;
 	xi = L;
-	xVar = .75*L;
-	yVar = .75*L;
+	xVar = input*L;
+	yVar = input*L;
 
 //	xi = 1; // xi/a	
 	clock_t begin = clock();
@@ -1414,7 +1414,7 @@ int main(int argc,char *argv[])
 	}
 
 //potOnParticles<<<threads,blocks>>>(particles,potentials, N,L,boxR);	
-	printBoxGPU(particles,N);
+	printBoxGPU(potentials,N);
 	printLineGPU(jumpRecord,10000);
 /*
         cudaMemcpy(hereP,particles,N*N*sizeof(REAL),cudaMemcpyDeviceToHost);
