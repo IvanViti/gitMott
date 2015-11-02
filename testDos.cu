@@ -726,18 +726,18 @@ REAL *createR(REAL *A,REAL *diffX, REAL *diffY,double N,double L,double xi) {
 	
 	intN = N;
 	for (idx = 0; idx < N*N*N*N; idx++) {
-/*
+
                 i = idx%(intN);
                 j = (idx%(intN*intN) - idx%(intN))/intN; 
                 k = (idx%(intN*intN*intN) - idx%(intN*intN))/(intN*intN) ; 
                 l = (idx%(intN*intN*intN*intN) - idx%(intN*intN*intN))/(intN*intN*intN) ;
-*/
 
+/*
                 k = idx%(intN);
                 l = (idx%(intN*intN) - idx%(intN))/intN;
                 i = (idx%(intN*intN*intN) - idx%(intN*intN))/(intN*intN) ;
                 j = (idx%(intN*intN*intN*intN) - idx%(intN*intN*intN))/(intN*intN*intN) ;
-
+*/
 
                 doublek = (double) k;
                 doublel = (double) l;
@@ -748,17 +748,19 @@ REAL *createR(REAL *A,REAL *diffX, REAL *diffY,double N,double L,double xi) {
                 kObs = C_mod(kNew,N);
                 lObs = C_mod(lNew,N);
 		
-		diffXThere = diffX[kObs];
-		diffXHere = diffX[i];
-		if((kNew < 0) || (kNew > N)) {
-			diffXHere = -diffX[i];
-			diffXThere = -diffX[kObs];
-		}
-		diffYThere = diffY[lObs];
-		diffYHere = diffY[j];
-		if((lNew < 0) || (lNew > N)) {
-			diffYHere = -diffY[j];
-                        diffYThere = -diffY[lObs];
+                diffXHere = diffX[i + intN*j];
+                diffXThere = diffX[kObs + intN*lObs];
+
+                if((kNew < 0) || (kNew > N)) {
+                        diffXHere = -diffX[i + intN*j];
+                        diffXThere = -diffX[kObs + intN*lObs];
+                }
+                diffYHere = diffY[i + intN*j];
+                diffYThere = diffY[kObs + intN*lObs];
+
+                if((lNew < 0) || (lNew > N)) {
+                        diffYHere = -diffY[i + intN*j];
+                        diffYThere = -diffY[kObs + intN*lObs];
                 }
 
 		deltaX = diffXHere - (diffXThere + L*(doublek - N/2));
@@ -1189,7 +1191,9 @@ void glatzRelax(int threads,int blocks,double L,double N,REAL* potentials,REAL *
 //highs to lows
 //	switcharoo(c_stable,g_stable,sumArray,rangeMatrix,g_temp,substrate,extraArray,g_itemp,g_otemp,boxR,dosMatrix, particles,potentials,reducedSum, N,  L,slices,threads, blocks);
 	errorAsk("switching highs to lows");
+
                 G_dos(sumArray,extraArray,boxR,particles,substrate,reducedSum,dosMatrix,potentials,g_temp, slices,N, L, threads,blocks) ;
+
 
 	cudaFree(extraArray);
 	cudaFree(rangeMatrix);
