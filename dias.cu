@@ -824,7 +824,7 @@ REAL *createR(REAL *A,REAL *diffX, REAL *diffY,double N,double L,double xi) {
 /*
 	for (i = 0; i < N; i++) {
 		for(j = 0; j < N ; j++) {
-			 cout<<A[1 + intN*1 + intN*intN*i + intN*intN*intN*j]<<" ";
+			 cout<<A[3 + intN*98 + intN*intN*i + intN*intN*intN*j]<<" ";
 		}
 		cout<<endl;
 	}
@@ -1191,20 +1191,38 @@ int *highsToLows(int max_offset,int min_offset,REAL max_value,REAL min_value,int
 	return c_stable;
 }
 
+__global__ void grabPositives(REAL *extraArray,REAL* dosMatrix,int N) {
+ int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+	if (idx < N*N) {
+		extraArray[idx] = 9999999;//might cause problems if not high enough
+		if(dosMatrix[idx] > 0) {
+			extraArray[idx] = dosMatrix[idx];
+		}
+	}
+
+
+}
+
 void switcharoo(int *c_stable,int *g_stable,REAL *sumArray,REAL *rangeMatrix,REAL *g_temp,REAL *substrate,REAL *extraArray,REAL *g_itemp,REAL *g_otemp,REAL *boxR,REAL *dosMatrix, REAL *particles,REAL *potentials,REAL *reducedSum,int N, double L,int slices,int threads, int blocks) {
 
 	int min_offset,max_offset;
 	REAL min_value,max_value;
 	  thrust::device_ptr<REAL> g_ptr =  thrust::device_pointer_cast(dosMatrix);
-	
+	  thrust::device_ptr<REAL> extra_ptr =  thrust::device_pointer_cast(extraArray);
+
         while (c_stable[0] == 0) {
 		G_dos(sumArray,extraArray,boxR,particles,substrate,reducedSum,dosMatrix,potentials,g_temp, slices,N, L, threads,blocks) ;
 	     
 		min_offset = thrust::min_element(g_ptr, g_ptr + N) - g_ptr;
 		min_value = *(g_ptr + min_offset);
+	
+		grabPositives<<<blocks,threads>>>(extraArray,dosMatrix,N);		
 
-		max_offset = thrust::max_element(g_ptr, g_ptr + N) - g_ptr;
-		max_value = *(g_ptr + max_offset);
+              max_offset = thrust::min_element(extra_ptr, extra_ptr + N) - extra_ptr; //grabbing the smallest positive number
+              max_value = *(extra_ptr + max_offset);
+
+//		max_offset = thrust::max_element(g_ptr, g_ptr + N) - g_ptr;
+//		max_value = *(g_ptr + max_offset);
 	
 		c_stable = highsToLows( max_offset,min_offset, max_value,min_value,g_stable,c_stable, sumArray,boxR,g_itemp,g_otemp,particles,potentials,reducedSum,rangeMatrix, N, L, blocks,threads);
 	}
@@ -1314,16 +1332,16 @@ int main(int argc,char *argv[])
 //	L = 7e-6;	
 	L = 1e-8; //10 nm
 //	tSteps = 1000000; //for statistically accurate runs
-	tSteps = 100; //for potential runs
-//	tSteps = 1; // for seeing the fields
-//	tSteps = 0;
+//	tSteps = 100; //for potential runs
+	tSteps = 0; // for seeing the fields
+//	Steps = 0;
 //	relax = 1;
-	relax = 0; 
+	relax = 1; 
 	
 	REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*dosMatrix,*reducedSum,*g_itemp,*g_otemp,*g_temp,*hereDos,*jumpRecord;
 	xi = L;
-	xVar = .3*L;
-	yVar = .3*L;
+	xVar = .75*L;
+	yVar = .75*L;
 
 //	xi = 1; // xi/a	
 	clock_t begin = clock();
@@ -1395,8 +1413,8 @@ int main(int argc,char *argv[])
 		findJump(hereP,hereProb,herePot,particles,probabilities,potentials,substrate,reducedProb,jumpRecord, N, xi, threads, blocks,eV,Ec,L,T,boxR,alphaOne,alphaTwo);
 	}
 
-	
-	printBoxGPU(potentials,N);
+//potOnParticles<<<threads,blocks>>>(particles,potentials, N,L,boxR);	
+	printBoxGPU(particles,N);
 	printLineGPU(jumpRecord,10000);
 /*
         cudaMemcpy(hereP,particles,N*N*sizeof(REAL),cudaMemcpyDeviceToHost);
