@@ -1120,6 +1120,54 @@ void testMove2(double L,int i, int j,int intN,int blocks, int threads,REAL *part
 
 }
 
+void spiral(int index,double L,int intN,int blocks, int threads,REAL *particles,REAL *potentials,REAL *g_itemp,REAL *g_otemp,REAL *boxR,REAL *sumArray) { 
+	int xMod,yMod,nLevels,xStart,yStart,ringLevel,ringLength,xNow,yNow,xCount,yCount;
+	nLevels = 4;
+	xStart = index/intN;
+        yStart = index%intN;
+	
+
+	for (ringLevel = 1; ringLevel < nLevels; ringLevel++) {
+		ringLength = ringLevel * 2 +1; 
+		xNow = xStart + ringLevel;
+	        yNow = yStart + ringLevel;
+
+		for (xCount = 1; xCount < ringLength; xCount++) {
+			xNow = xNow - 1;
+			yNow = yNow;
+			xMod = C_mod(xNow,intN);
+			yMod = C_mod(yNow,intN);
+			testMove( L,xMod, yMod, intN, blocks, threads,particles,potentials,g_itemp, g_otemp,boxR,sumArray);	
+		}
+
+		for (yCount = 1; yCount < ringLength; yCount++) {
+			xNow = xNow;
+			yNow = yNow - 1;
+			xMod = C_mod(xNow,intN);
+                        yMod = C_mod(yNow,intN);
+                        testMove( L,xMod, yMod, intN, blocks, threads,particles,potentials,g_itemp, g_otemp,boxR,sumArray);	
+		}
+                for (xCount = 1; xCount < ringLength; xCount++) {
+                        xNow = xNow + 1;
+                        yNow = yNow;
+                        xMod = C_mod(xNow,intN);
+                        yMod = C_mod(yNow,intN);
+                        testMove( L,xMod, yMod, intN, blocks, threads,particles,potentials,g_itemp, g_otemp,boxR,sumArray);
+                }
+		for (yCount = 1; yCount < ringLength; yCount++) {
+                        xNow = xNow;
+                        yNow = yNow + 1;
+                        xMod = C_mod(xNow,intN);
+                        yMod = C_mod(yNow,intN);
+                        testMove( L,xMod, yMod, intN, blocks, threads,particles,potentials,g_itemp, g_otemp,boxR,sumArray);
+                }
+
+
+
+	}
+
+}
+
 void checkArea(double L,int intN,int blocks, int threads,REAL *particles,REAL *potentials,REAL *reducedSum,REAL *rangeMatrix,REAL *g_itemp,REAL *g_otemp,REAL *boxR,REAL *sumArray) {
 	int i,j;
 	for (int n = 0; n < intN*intN;n++) {
@@ -1177,19 +1225,22 @@ __global__ void checkStable(REAL * particles,int *g_stable,REAL min_value,REAL m
 
 }
 
-int *highsToLows(int max_offset,int min_offset,REAL max_value,REAL min_value,int *g_stable,int *c_stable,REAL * sumArray,REAL *boxR,REAL *g_itemp,REAL *g_otemp, REAL *particles,REAL *potentials,REAL *reducedSum,REAL *rangeMatrix, int N,double L,int blocks,int threads) {
+int *highsToLows(int max_offset,int min_offset,REAL max_value,REAL min_value,int *g_stable,int *c_stable,REAL * sumArray,REAL *boxR,REAL *g_itemp,REAL *g_otemp, REAL *particles,REAL *potentials,REAL *reducedSum,REAL *rangeMatrix, int intN,double L,int blocks,int threads) {
 	
 	checkStable<<<blocks,threads>>>(particles,g_stable, min_value, max_value, min_offset, max_offset);	
 	cudaMemcpy(c_stable,g_stable,sizeof(int),cudaMemcpyDeviceToHost);
 
 	if (c_stable == 0) {
 		
-		checkRange<<<blocks,threads>>>(max_offset,rangeMatrix,N);
-		checkArea(L,N,blocks,threads,particles,potentials,reducedSum,rangeMatrix,g_itemp,g_otemp,boxR,sumArray); //look at area around max
+		spiral(max_offset, L, intN,blocks, threads,particles,potentials,g_itemp,g_otemp,boxR,sumArray);
+		spiral(min_offset, L, intN,blocks, threads,particles,potentials,g_itemp,g_otemp,boxR,sumArray);
+/*
+		checkRange<<<blocks,threads>>>(max_offset,rangeMatrix,intN);
+		checkArea(L,intN,blocks,threads,particles,potentials,reducedSum,rangeMatrix,g_itemp,g_otemp,boxR,sumArray); //look at area around max
 
-                checkRange<<<blocks,threads>>>(min_offset,rangeMatrix,N);
-                checkArea(L,N,blocks,threads,particles,potentials,reducedSum,rangeMatrix,g_itemp,g_otemp,boxR,sumArray); //look at area around min
-	
+                checkRange<<<blocks,threads>>>(min_offset,rangeMatrix,intN);
+                checkArea(L,intN,blocks,threads,particles,potentials,reducedSum,rangeMatrix,g_itemp,g_otemp,boxR,sumArray); //look at area around min
+*/	
 	}
 		
 	return c_stable;
@@ -1219,12 +1270,13 @@ void switcharoo(int *c_stable,int *g_stable,REAL *sumArray,REAL *rangeMatrix,REA
 	     
 		min_offset = thrust::min_element(g_ptr, g_ptr + N*N) - g_ptr;
 		min_value = *(g_ptr + min_offset);
+cout<<min_value<<endl;
 	
 		grabPositives<<<blocks,threads>>>(extraArray,dosMatrix,N);		
 
               max_offset = thrust::min_element(extra_ptr, extra_ptr + N*N) - extra_ptr; //grabbing the smallest positive number
               max_value = *(extra_ptr + max_offset);
-
+cout<<max_value<<endl;
 //		max_offset = thrust::max_element(g_ptr, g_ptr + N) - g_ptr;
 //		max_value = *(g_ptr + max_offset);
 	
@@ -1268,7 +1320,7 @@ void glatzRelax(int threads,int blocks,double L,double N,REAL* potentials,REAL *
 //original pair exchange
 	for(j = 0; j < N; j++) {
 	       	for(i = 0; i < N; i++) {
-			pairExchange(sumArray,particles,potentials,boxR,g_itemp,g_otemp,reducedSum,  N,  L, slices,  i, j,threads,blocks);
+	//		pairExchange(sumArray,particles,potentials,boxR,g_itemp,g_otemp,reducedSum,  N,  L, slices,  i, j,threads,blocks);
 //			cout<<i<<" "<<j<<endl;
 		}
 	}
@@ -1315,8 +1367,8 @@ int main(int argc,char *argv[])
 	srand48(time(0));
 
 	input = atof(argv[1]);
-//	N = 30;
-	N = 100;
+	N = 32;
+//	N = 100;
 	muVar = 0;
 //	muVar = 1e-5;
 	
@@ -1337,10 +1389,10 @@ int main(int argc,char *argv[])
 	L = 1e-8; //10 nm
 //	tSteps = 1000000; //for statistically accurate runs
 //	tSteps = 100; //for potential runs
-	tSteps = 1; // for seeing the fields
+	tSteps = 0; // for seeing the fields
 //	Steps = 0;
 //	relax = 1;
-	relax = 0; 
+	relax = 1; 
 	
 	REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*dosMatrix,*reducedSum,*g_itemp,*g_otemp,*g_temp,*hereDos,*jumpRecord;
 	xi = L;
