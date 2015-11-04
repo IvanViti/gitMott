@@ -1041,7 +1041,9 @@ __global__ void particlePick2(int i,int j,int intN,REAL *particles,REAL *sumArra
 //	if (idx < 1) {
 	 if (rangeMatrix[q + intN*w] == 1) {
 	
-        if ((-sumArray[0] < sumArray[1] ) ||(-sumArray[0] < sumArray[2] ) ||(-sumArray[0] < sumArray[3] ) ||(-sumArray[0] < sumArray[4] ) ) {
+     
+        if ((sumArray[0] < sumArray[1] ) ||(sumArray[0] < sumArray[2] ) ||(sumArray[0] < sumArray[3] ) ||(sumArray[0] < sumArray[4] ) ) {
+//   if ((-sumArray[0] < sumArray[1] ) ||(-sumArray[0] < sumArray[2] ) ||(-sumArray[0] < sumArray[3] ) ||(-sumArray[0] < sumArray[4] ) ) {
 
         int iPrev,jPrev,iPost,jPost;
         iPrev = G_mod(i - 1,intN);
