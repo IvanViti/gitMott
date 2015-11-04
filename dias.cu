@@ -898,7 +898,9 @@ __device__ void g_particleSwap(int i,int j,int k,int l,int intN,REAL *particles)
 __global__ void particlePick(int i,int j,int intN,REAL *particles,REAL *sumArray) {
 //	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
 //	if (idx < 1){
-	if ((-sumArray[0] < sumArray[1] ) ||(-sumArray[0] < sumArray[2] ) ||(-sumArray[0] < sumArray[3] ) ||(-sumArray[0] < sumArray[4] ) ) {
+//	if ((-sumArray[0] < sumArray[1] ) ||(-sumArray[0] < sumArray[2] ) ||(-sumArray[0] < sumArray[3] ) ||(-sumArray[0] < sumArray[4] ) ) {
+        if ((sumArray[0] < sumArray[1] ) ||(sumArray[0] < sumArray[2] ) ||(sumArray[0] < sumArray[3] ) ||(sumArray[0] < sumArray[4] ) ) {
+
 
         int iPrev,jPrev,iPost,jPost;
         iPrev = G_mod(i - 1,intN);
@@ -1213,12 +1215,12 @@ void switcharoo(int *c_stable,int *g_stable,REAL *sumArray,REAL *rangeMatrix,REA
         while (c_stable[0] == 0) {
 		G_dos(sumArray,extraArray,boxR,particles,substrate,reducedSum,dosMatrix,potentials,g_temp, slices,N, L, threads,blocks) ;
 	     
-		min_offset = thrust::min_element(g_ptr, g_ptr + N) - g_ptr;
+		min_offset = thrust::min_element(g_ptr, g_ptr + N*N) - g_ptr;
 		min_value = *(g_ptr + min_offset);
 	
 		grabPositives<<<blocks,threads>>>(extraArray,dosMatrix,N);		
 
-              max_offset = thrust::min_element(extra_ptr, extra_ptr + N) - extra_ptr; //grabbing the smallest positive number
+              max_offset = thrust::min_element(extra_ptr, extra_ptr + N*N) - extra_ptr; //grabbing the smallest positive number
               max_value = *(extra_ptr + max_offset);
 
 //		max_offset = thrust::max_element(g_ptr, g_ptr + N) - g_ptr;
