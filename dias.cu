@@ -5,7 +5,7 @@
 
 /*
 	Code guide: first matrices are initialized. they are used to keep track of the particles, the probabilities to jump, the substrate, and the general electric potential.
-	Input parameters are also taken in. Currently the code takes in one parameter. The rest of the parameters must be adjusted manually and the code must be recompiled. The general electric potential is calculated in cuda. This reduces a n^4 problem to a n^2 one. A site is picked at random at the CPU (part of the monte-carlo process) and the probabilities with the particles around it are calculated at the GPU. The probabilities are then returned to the CPU where the second part of the Monte-Carlo algorithm occurs. Here, the site which the subject particle will interact with is chosen randomly but with weights according to the probabilities. The jump is made, and the system starts over.  
+	Input parameters are also taken in. Currently the code takes in one parameter. The rest of the parameters must be adjusted manually and the code must be recompiled. The general electric potential is calculated in cuda. This reduces a n^4 problem to a n^2 one. A site is picked at random at the CPU (part of the monte-carlo process) and the probabilities with the particles around it are calculated at the gpu. The probabilities are then returned to the CPU where the second part of the Monte-Carlo algorithm occurs. Here, the site which the subject particle will interact with is chosen randomly but with weights according to the probabilities. The jump is made, and the system starts over.  
 
 
 
@@ -18,6 +18,7 @@
 #include <math.h>
 #include <assert.h>
 #include <iostream>
+#include <fstream>
 #include <ctime>
 #include <thrust/scan.h>
 #include <thrust/device_ptr.h>
@@ -512,11 +513,38 @@ void printLineGPU(REAL *g_array,int size) {
         for (k = 0; k < size ; k++){
 
                         fprintf(fp1, "%lf ",c_array[k]);
+			fprintf(fp1,"\n");
         }
 //cleanup
         fclose(fp1);
 	delete[] c_array;
 }
+
+REAL *loadMatrix(REAL *hereMatrix,char* fileName) {
+//      infile.open (fileName, ifstream::in);
+//      REAL * buffer;
+//        ifstream read(fileName);
+        ifstream infile(fileName);
+        string line;
+        int counter = 0;
+        double d;
+        while (getline(infile, line)) {
+                istringstream iss(line);
+                if (iss >> d) {
+//                      cout<<d<<endl;
+                        hereMatrix[counter] = d;
+
+                        counter++;
+                }
+
+
+        }
+
+
+        return hereMatrix;
+}
+
+
 
 
 //second part of the heart of this code. Here the probabilities are summed and a number is picked from 0 to that number. The code then sums through the probabilities untill it reaches that number. In this way, probabilities which are higher will have a larger chance of getting picked. 
@@ -669,6 +697,8 @@ REAL *createSub(REAL *hereS,double muVar,int N) {
 
         return hereS;
 }
+
+
 
 // creates the variation in x & y matrices
 REAL * createDiff(REAL * hereDiff, double var, int N) {
@@ -1320,7 +1350,7 @@ void glatzRelax(int threads,int blocks,double L,double N,REAL* potentials,REAL *
 //original pair exchange
 	for(j = 0; j < N; j++) {
 	       	for(i = 0; i < N; i++) {
-	//		pairExchange(sumArray,particles,potentials,boxR,g_itemp,g_otemp,reducedSum,  N,  L, slices,  i, j,threads,blocks);
+			pairExchange(sumArray,particles,potentials,boxR,g_itemp,g_otemp,reducedSum,  N,  L, slices,  i, j,threads,blocks);
 //			cout<<i<<" "<<j<<endl;
 		}
 	}
@@ -1443,12 +1473,18 @@ int main(int argc,char *argv[])
 
 //	showMove(hereBoxR,N);
 //	showMove(hereS,N);
+	
+	char    nameP[256];
+        sprintf(nameP, "line.txt");
+	hereP = loadMatrix(hereP,nameP);
+        
+
+
 	cudaMemcpy(potentials,herePot,N*N*sizeof(REAL),cudaMemcpyHostToDevice);
 	cudaMemcpy(substrate,hereS,N*N*sizeof(REAL),cudaMemcpyHostToDevice);
 	cudaMemcpy(boxR,hereBoxR,N*N*N*N*sizeof(REAL),cudaMemcpyHostToDevice);
 	cudaMemcpy(particles,hereP,N*N*sizeof(REAL),cudaMemcpyHostToDevice);
 
-//	printGPU(particles,N);
 	jumpFill<<<blocks,threads>>>(jumpRecord,10000);
 //system is run but results arent output for the relaxation phase
         if (relax == 1) {
