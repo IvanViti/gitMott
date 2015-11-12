@@ -25,6 +25,8 @@
 #include <thrust/reduce.h>
 #include <thrust/extrema.h>
 #include <cuda.h>
+#include <sstream>
+#include <string>
 
 #define PI	3.1415926535897932384626433832795
 #define TWOPI 	6.28318530717958647692528676655901
@@ -1387,16 +1389,17 @@ __global__ void	jumpFill(REAL* jumpRecord,int N) {
 }
 
 
+
+
 int main(int argc,char *argv[])
 {
 	int threads,blocks;
 	int N,t,tSteps,nParticles,relax;
-	double xi,muVar,xVar,yVar,eV,Ec,L,T,input,alphaOne,alphaTwo;
+	double xi,muVar,xVar,yVar,eV,Ec,L,T,alphaOne,alphaTwo;
 
 
 	srand48(time(0));
 
-	input = atof(argv[1]);
 	N = 32;
 //	N = 100;
 	muVar = 0;
@@ -1426,8 +1429,63 @@ int main(int argc,char *argv[])
 	
 	REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*dosMatrix,*reducedSum,*g_itemp,*g_otemp,*g_temp,*hereDos,*jumpRecord;
 	xi = L;
-	xVar = input*L;
-	yVar = input*L;
+	xVar = L;
+	yVar = L;
+
+
+
+
+int intVal;
+REAL realVal;
+	
+ifstream is_file(argv[1]);
+string line;
+while( getline(is_file, line) )
+{
+ istringstream is_line(line);
+ string key;
+  if( getline(is_line, key, '=') )
+  {
+    string value;
+    if( getline(is_line, value) )
+//      store_line(key, value);
+        if(key == "Temp") {
+                realVal = atof(value.c_str());
+                T = realVal;
+        }
+
+	if(key == "XYvar") {
+                realVal = atof(value.c_str());
+                xVar = realVal*L;
+		yVar = realVal*L;
+        }
+	
+        if(key == "tSteps") {
+                intVal = atoi(value.c_str());
+                tSteps = intVal;
+        }
+
+        if(key == "L") {
+                realVal = atof(value.c_str());
+                L = realVal;
+        }
+
+	if(key == "relax") {
+                intVal = atoi(value.c_str());
+                relax = intVal;
+        }
+
+  }
+}
+
+
+
+
+
+
+
+
+
 
 //	xi = 1; // xi/a	
 	clock_t begin = clock();
