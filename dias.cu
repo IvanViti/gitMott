@@ -1437,7 +1437,8 @@ int main(int argc,char *argv[])
 
 int intVal;
 REAL realVal;
-	
+const char *fileName;
+
 ifstream is_file(argv[1]);
 string line;
 while( getline(is_file, line) )
@@ -1473,6 +1474,11 @@ while( getline(is_file, line) )
 	if(key == "relax") {
                 intVal = atoi(value.c_str());
                 relax = intVal;
+        }
+
+	if(key == "fileName") {
+                
+                fileName = value.c_str();
         }
 
   }
@@ -1529,13 +1535,11 @@ while( getline(is_file, line) )
 	hereBoxR = new REAL[N*N*N*N];
 	hereBoxR = createR(hereBoxR,hereXDiff,hereYDiff,N,L,xi);
 
-//	showMove(hereBoxR,N);
-//	showMove(hereS,N);
-	
+/*	
 	char    nameP[256];
         sprintf(nameP, "line.txt");
 	hereP = loadMatrix(hereP,nameP);
-        
+ */       
 
 
 	cudaMemcpy(potentials,herePot,N*N*sizeof(REAL),cudaMemcpyHostToDevice);
@@ -1566,18 +1570,18 @@ while( getline(is_file, line) )
 //potOnParticles<<<threads,blocks>>>(particles,potentials, N,L,boxR);	
 	printBoxGPU(potentials,N);
 	printLineGPU(jumpRecord,10000);
-/*
-        cudaMemcpy(hereP,particles,N*N*sizeof(REAL),cudaMemcpyDeviceToHost);
+
+        cudaMemcpy(hereP,jumpRecord,N*N*sizeof(REAL),cudaMemcpyDeviceToHost);
         FILE    *fp1;
-        char    str1[256];
-        sprintf(str1, "particles.txt");
-        fp1 = fopen(str1, "w");
+//        char    str1[256];
+  //      sprintf(str1, "particles.txt");
+        fp1 = fopen(fileName, "w");
 	for (int k = 0; k < N*N ; k++){
                 fprintf(fp1, "%lf ",hereP[k]);
         }
 //cleanup
 	fclose(fp1);
-*/
+
 
 
         cudaMemcpy(hereDos,dosMatrix,N*N*sizeof(REAL),cudaMemcpyDeviceToHost);
