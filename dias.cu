@@ -482,15 +482,34 @@ __global__ void particleJump(int x, int y,double randomNum,int N,REAL *reducedPr
 	
 
 }
-void printBoxGPU(REAL *g_array,int size) {
+
+void printBoxCPU(REAL *c_array,int size, char * boxName) {
+        int k,l;
+        FILE    *fp1;
+//        char    str1[256];
+//        sprintf(str1, "box.txt");
+        fp1 = fopen(boxName, "w");
+        for (k = 0; k < size ; k++){
+                for(l = 0; l < size; l++) {
+
+                        fprintf(fp1, "%lf ",1e9*c_array[k + l*size]);
+                }
+        fprintf(fp1,"\n");
+        }
+//cleanup
+        fclose(fp1);
+}
+
+
+void printBoxGPU(REAL *g_array,int size, char * boxName) {
         REAL *c_array;
         c_array =  new REAL[size*size];
         int k,l;
         cudaMemcpy(c_array,g_array,size*size*sizeof(REAL),cudaMemcpyDeviceToHost);
         FILE    *fp1;
-        char    str1[256];
-        sprintf(str1, "box.txt");
-        fp1 = fopen(str1, "w");
+//        char    str1[256];
+//        sprintf(str1, "box.txt");
+        fp1 = fopen(boxName, "w");
         for (k = 0; k < size ; k++){
                 for(l = 0; l < size; l++) {
 
@@ -503,15 +522,15 @@ void printBoxGPU(REAL *g_array,int size) {
 	delete[] c_array;
 }
 
-void printLineGPU(REAL *g_array,int size) {
+void printLineGPU(REAL *g_array,int size,char * lineName) {
         REAL *c_array;
         c_array =  new REAL[size];
         int k;
         cudaMemcpy(c_array,g_array,size*sizeof(REAL),cudaMemcpyDeviceToHost);
         FILE    *fp1;
-        char    str1[256];
-        sprintf(str1, "line.txt");
-        fp1 = fopen(str1, "w");
+ //       char    str1[256];
+//        sprintf(str1, "line.txt");
+        fp1 = fopen(lineName, "w");
         for (k = 0; k < size ; k++){
 
                         fprintf(fp1, "%lf ",c_array[k]);
@@ -1427,18 +1446,21 @@ int main(int argc,char *argv[])
 //	relax = 1;
 	relax = 1; 
 	
-	REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*dosMatrix,*reducedSum,*g_itemp,*g_otemp,*g_temp,*hereDos,*jumpRecord;
+	REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*dosMatrix,*reducedSum,*g_itemp,*g_otemp,*g_temp,*jumpRecord;
 	xi = L;
 	xVar = L;
 	yVar = L;
 
-
+//	char *lineName;
+//       char *boxName;
+	char boxName[256];
+	char lineName[256];
+	sprintf(lineName, "line.txt");
+	sprintf(boxName, "box.txt");
 
 
 int intVal;
 REAL realVal;
-const char *fileName;
-
 ifstream is_file(argv[1]);
 string line;
 while( getline(is_file, line) )
@@ -1454,6 +1476,12 @@ while( getline(is_file, line) )
                 realVal = atof(value.c_str());
                 T = realVal;
         }
+
+        if(key == "muVar") {
+                realVal = atof(value.c_str());
+                muVar = realVal;
+        }
+
 
 	if(key == "XYvar") {
                 realVal = atof(value.c_str());
@@ -1476,21 +1504,19 @@ while( getline(is_file, line) )
                 relax = intVal;
         }
 
-	if(key == "fileName") {
-                
-                fileName = value.c_str();
+	if(key == "lineName") {
+                 sprintf(lineName,  value.c_str());
+
+//                lineName = value.c_str();
+        }
+
+        if(key == "boxName") {
+                 sprintf(boxName,  value.c_str());
+//                boxName = value.c_str();
         }
 
   }
 }
-
-
-
-
-
-
-
-
 
 
 //	xi = 1; // xi/a	
@@ -1519,7 +1545,6 @@ while( getline(is_file, line) )
 	hereProb = new REAL[N*N];	
 	hereProb = C_random(N,0,hereProb);
 	hereP = new REAL[N*N];
-        hereDos = new REAL[N*N];
 //	hereP = C_clump(N,nParticles,hereP);//test relaxation
 	hereP = C_spread(N,nParticles,hereP); //test general potential
 //	hereP = C_random(N,nParticles,hereP);	
@@ -1558,7 +1583,7 @@ while( getline(is_file, line) )
 //find the DoS
 
 //      dosMatrix = dosFind(hereP, hereS,herePot,dosMatrix, particles,potentials,boxR, N, L, threads, blocks);  
-  //    showMove(dosMatrix,N);  
+//	showMove(hereXDiff,N);  
 
 
 
@@ -1568,9 +1593,12 @@ while( getline(is_file, line) )
 	}
 
 //potOnParticles<<<threads,blocks>>>(particles,potentials, N,L,boxR);	
-	printBoxGPU(potentials,N);
-	printLineGPU(jumpRecord,10000);
-
+//	sprintf(str1, "line.txt");
+//	printBoxCPU(hereXDiff,N,boxName);
+	printBoxGPU(dosMatrix,N,boxName);
+	printBoxGPU(particles,N,lineName);
+//	printLineGPU(jumpRecord,10000,lineName);
+/*
         cudaMemcpy(hereP,jumpRecord,N*N*sizeof(REAL),cudaMemcpyDeviceToHost);
         FILE    *fp1;
 //        char    str1[256];
@@ -1583,18 +1611,7 @@ while( getline(is_file, line) )
 	fclose(fp1);
 
 
-
-        cudaMemcpy(hereDos,dosMatrix,N*N*sizeof(REAL),cudaMemcpyDeviceToHost);
-        FILE    *fp2;
-        char    str2[256];
-        sprintf(str2, "dosMatrix.txt");
-        fp2 = fopen(str2, "w");
-        for (int k = 0; k < N*N ; k++){
-                fprintf(fp2, "%lf ",hereDos[k]);
-        }
-//cleanup
-        fclose(fp2);
-
+*/
 	
         delete[] herePot;
         delete[] hereProb;
