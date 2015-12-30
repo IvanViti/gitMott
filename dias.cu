@@ -1,6 +1,5 @@
 //advanced cuda system
 //sped up algorithms
-//dosMott5: like dosMott4 but with reduce instead of scan
 
 
 /*
@@ -71,6 +70,15 @@ int C_mod(int a, int b) {
                 a = a - b;
         }
 return a;
+}
+
+__global__ void matrixCopy(int intN, REAL * matrixIn,REAL *matrixOut){
+         int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+        if (idx < intN*intN) {
+                matrixOut[idx] = matrixIn[idx];
+
+        }
+
 }
 
 
@@ -171,28 +179,28 @@ bool errorAsk(const char *s="n/a")
  __device__ double findBlockade(int p,int thisp,double Ec)
 {
 	
-        if ((thisp == 1) && (p == 0 )) {
+        if ((thisp == 1) && (p == -1 )) {
                 return 0; //no blockade penalty
         }
-        if ((thisp == 0) && (p == 1 )) {
+        if ((thisp == -1) && (p == 1 )) {
                 return 0;
         }
-        if ((thisp == 0) && (p == 2 )) {
+        if ((thisp == -1) && (p == 3)) {
                 return 2*Ec;
         }
-        if ((thisp == 2) && (p == 0 )) { //not sure about this one figured twice the electrons means twice the penalty.
+        if ((thisp == 3) && (p == -1 )) { //not sure about this one figured twice the electrons means twice the penalty.
                 return 2*Ec;
         }
         if ((thisp == 1) && (p == 1 )) {
                 return Ec;
         }
-        if ((thisp == 1) && (p == 2 )) {
+        if ((thisp == 1) && (p == 3 )) {
                 return 0;
         }
-        if ((thisp == 2) && (p == 1 )) {
+        if ((thisp == 3) && (p == 1 )) {
                 return 0;
         }
-	if ((thisp == 2) && (p == 2 )) { //no chance
+	if ((thisp == 3) && (p == 3 )) { //no chance
                 return 1000*Ec; 
         }
 
@@ -234,7 +242,6 @@ __global__ void findProbabilities(int N,double xi,REAL *probabilities,REAL *part
 		p = particles[x + N*y];
 		thisp = particles[thisi + N*thisj];
 	
-
 		if(particles[x + N*y] > particles[thisi + N*thisj]) {
 
 			blockadePart = -1*findBlockade(p,thisp,Ec)/boxR[hyperIndex];
@@ -325,7 +332,7 @@ int n = 0;
 	REAL dx2,dy2,fillVal;
 //	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
 //	if(idx < 1) {
-        if ((particles[x + y*N] == 0 ) && ( particles[newx + newy*N] == 0 ) ) {
+        if ((particles[x + y*N] == -1 ) && ( particles[newx + newy*N] == -1 ) ) { //do i really need this?
                 current = 0;
         }
 
@@ -372,14 +379,14 @@ int n = 0;
 
 
 	if (whichWay > 0){
-		particles[x + y*N] = particles[x + y*N] - 1;
-                particles[newx + newy*N] = particles[newx + newy*N] + 1;
+		particles[x + y*N] = particles[x + y*N] - 2;
+                particles[newx + newy*N] = particles[newx + newy*N] + 2;
 		
 	}
 
 	else if (whichWay < 0) {
-	        particles[x + y*N] = particles[x + y*N] + 1;
-                particles[newx + newy*N] = particles[newx + newy*N] - 1;
+	        particles[x + y*N] = particles[x + y*N] + 2;
+                particles[newx + newy*N] = particles[newx + newy*N] - 2;
 	}
 
 totalCurrent = totalCurrent + current;
@@ -651,12 +658,12 @@ __global__ void particleSwitch(int i,int j,int intN,REAL *particles) {
 	}
 }
 
-__global__ void dosPut(int i,int j,int intN,REAL *dosMatrix,REAL sum) {
-	dosMatrix[i + j*intN] =	sum;
+__global__ void dosPut(int i,int j,int intN,REAL *Ematrix,REAL sum) {
+	Ematrix[i + j*intN] =	sum;
 }
 
 
- void G_dos(REAL * sumArray,REAL *extraArray,REAL *boxR,REAL *particles,REAL *substrate,REAL *reducedSum,REAL *dosMatrix,REAL *potentials,REAL *g_temp,int slices,double N,double L,int threads,int blocks) {
+ void G_dos(REAL * sumArray,REAL *extraArray,REAL *boxR,REAL *particles,REAL *substrate,REAL *reducedSum,REAL *Ematrix,REAL *potentials,REAL *g_temp,int slices,double N,double L,int threads,int blocks) {
 	int i,j,intN;//not sure about Sums
 	intN = (int) N;
         thrust::device_ptr<REAL> g_go = thrust::device_pointer_cast(potentials);
@@ -707,7 +714,7 @@ __global__ void dosPut(int i,int j,int intN,REAL *dosMatrix,REAL sum) {
 			
 			result = thrust::reduce(sumArrayPtr, sumArrayPtr + 6); 
 //			result = 0;	
-			dosPut<<<blocks,threads>>>(i,j,intN,dosMatrix,result);
+			dosPut<<<blocks,threads>>>(i,j,intN,Ematrix,result);
 		}
 	}
 
@@ -768,7 +775,7 @@ REAL *C_random(double N,double nparticles,REAL *A) {
         for (idx = 0; idx < N; idx++) {
                 for( idy = 0; idy < N; idy++) {
                         index = int(idy + idx*N);
-                        A[index] = 0;
+                        A[index] = -1;
 
 
                 }
@@ -907,7 +914,7 @@ REAL *C_clump(double N,double nparticles,REAL *A) {
         int idx;
 
 	for (idx = 0;idx < N*N; idx++) {
-		A[idx] = 0;
+		A[idx] = -1;
 	}
 
 	for (idx = 0; idx < nparticles; idx++) {
@@ -925,7 +932,7 @@ REAL *C_spread(double N,double nparticles,REAL *A) {
 	
 	
         for (idx = 0;idx < N*N; idx++) {
-                A[idx] = 0;
+                A[idx] = -1;
         }
 
         for (idx = 0; idx < N*N; idx++) {
@@ -983,7 +990,7 @@ return newCoord;
 
 
 /*
-__global__ void fastSwap(int i1, int j1, int i2, int j2,int intN,REAL *particles,REAL *boxR,REAL *dosMatrix, REAL *tempDos,REAL *potentials){
+__global__ void fastSwap(int i1, int j1, int i2, int j2,int intN,REAL *particles,REAL *boxR,REAL *Ematrix, REAL *tempDos,REAL *potentials){
 
 	int x,y;
 	int xPre,yPre;
@@ -1039,7 +1046,7 @@ __global__ void fastSwap(int i1, int j1, int i2, int j2,int intN,REAL *particles
 			tempDos[idx] = crater;
 		}
 		else {
-			tempDos[idx] = dosMatrix[idx];
+			tempDos[idx] = Ematrix[idx];
 		}
 	
 		if (particles[i1 + intN*j1] == 0){
@@ -1049,69 +1056,114 @@ __global__ void fastSwap(int i1, int j1, int i2, int j2,int intN,REAL *particles
 }
 */
 
-__global__ void slowSwap(int i1,int j1,int i2, int j2,int intN, REAL* tempPar,REAL *tempPot,REAL *tempDos,REAL *particles,REAL *potentials,REAL *dosMatrix,REAL *boxR) {
+__global__ void slowSwap(int i1,int j1,int i2, int j2,int intN, REAL* tempPar,REAL *tempPot,REAL *tempDos,REAL *particles,REAL *potentials,REAL *Ematrix,REAL *boxR,REAL *substrate,REAL *watcher) {
 	double distance1, distance2;
 	int xPre,yPre,x,y;
         double changeToV = 3.6e-10; // Ke*Q/Kd 
 
          int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
          if(idx<intN*intN) {
+		tempPar[idx] = particles[idx];
+                tempPot[idx] = potentials[idx];
+                tempDos[idx] = Ematrix[idx];
 		if (particles[i1 + intN*j1] != particles[i2 + intN*j2]) {
-			tempPar[idx] = particles[idx];
-			tempPot[idx] = potentials[idx];
-			tempDos[idx] = dosMatrix[idx];
 			if(particles[i1 + intN*j1] == 1) {
-				tempPar[i1 + intN*j1] = 0;
+				tempPar[i1 + intN*j1] = -1;
 
-	                        xPre = idx/intN;
-	                        yPre = idx%intN;
-        	                x = (int) G_mod(xPre + ( intN/2 - i1),intN);
+//	                        xPre = idx/intN;
+//	                        yPre = idx%intN;
+        	                
+				yPre = idx/intN;
+                                xPre = idx%intN;				
+
+				x = (int) G_mod(xPre + ( intN/2 - i1),intN);
                 	        y = (int) G_mod(yPre + (intN/2 - j1),intN);
                                 distance1 = boxR[i1 + intN*j1 + intN*intN*x + intN*intN*intN*y];
 
 	                        if (distance1 > 0) {
 	                                tempPot[idx] = tempPot[idx] + changeToV/distance1;
+					tempDos[idx] = tempPot[idx]*tempPar[idx] + substrate[idx]*tempPar[idx];
         	                }
-				tempDos[idx] = tempPot[idx]*tempPar[idx];
+				else {
+//					tempPot[idx] = tempPot[idx] - substrate[idx]*particles[idx];	
+					tempDos[idx] = tempPot[idx]*tempPar[idx] + substrate[idx]*tempPar[idx];
+
+				}
 //	probe = distance1;
 				tempPar[i2 + intN*j2] = 1;
 				
 				distance2 = boxR[i2 + intN*j2 + intN*intN*x + intN*intN*intN*y];
 				if (distance2 > 0) {
-                                        tempPot[idx] = tempPot[idx] - changeToV/distance1;
+                                        tempPot[idx] = tempPot[idx] - changeToV/distance2;
+					tempDos[idx] = tempPot[idx]*tempPar[idx]+ substrate[idx]*tempPar[idx];
                                 }
-				tempDos[idx] = tempPot[idx]*tempPar[idx];
-			
+				else {
+//                                        tempPot[idx] = tempPot[idx] + substrate[idx]*particles[idx];
+					
+					tempDos[idx] = tempPot[idx]*tempPar[idx] - substrate[idx]*tempPar[idx];
+
+                                }		
+
+						
 			}
 			else {
                                 tempPar[i1 + intN*j1] = 1;
 
-                                xPre = idx/intN;
-                                yPre = idx%intN;
+//                                xPre = idx/intN;
+//                                yPre = idx%intN;
+
+				yPre = idx/intN;
+                                xPre = idx%intN;
+
                                 x = (int) G_mod(xPre + ( intN/2 - i1),intN);
                                 y = (int) G_mod(yPre + (intN/2 - j1),intN);
                                 distance1 = boxR[i1 + intN*j1 + intN*intN*x + intN*intN*intN*y];
+//				distance1 = boxR[x + intN*y + intN*intN*i1 + intN*intN*intN*j1];
+//				watcher[idx] = boxR[i1 + intN*j1 + intN*intN*x + intN*intN*intN*y];
                                 if (distance1 > 0) {
                                         tempPot[idx] = tempPot[idx] - changeToV/distance1;
+					tempDos[idx] = tempPot[idx]*tempPar[idx] + substrate[idx]*tempPar[idx];
                                 }
-                                tempDos[idx] = tempPot[idx]*tempPar[idx];
+				else {
+//                                        tempPot[idx] = tempPot[idx] + substrate[idx]*particles[idx];
+					tempDos[idx] = tempPot[idx]*tempPar[idx] + substrate[idx]*tempPar[idx];
+//					watcher[idx] = tempPot[idx]*tempPar[idx] ;
+                                }
+//watcher[idx] = changeToV/distance1;
 
-                                tempPar[i2 + intN*j2] = 0;
+                                tempPar[i2 + intN*j2] = -1;
+				x = (int) G_mod(xPre + ( intN/2 - i2),intN);
+                                y = (int) G_mod(yPre + (intN/2 - j2),intN);
 
                                 distance2 = boxR[i2 + intN*j2 + intN*intN*x + intN*intN*intN*y];
                                 if (distance2 > 0) {
-                                        tempPot[idx] = tempPot[idx] + changeToV/distance1;
+                                        tempPot[idx] = tempPot[idx] + changeToV/distance2;
+					tempDos[idx] = tempPot[idx]*tempPar[idx] + substrate[idx]*tempPar[idx];
                                 }
-                                tempDos[idx] = tempPot[idx]*tempPar[idx];
+                                else {
+//                                        tempPot[idx] = tempPot[idx] - substrate[idx]*particles[idx];
+					tempDos[idx] = tempPot[idx]*tempPar[idx] + substrate[idx]*tempPar[idx];
+//					watcher[idx] = tempPot[idx]*tempPar[idx] ;
+				}
+			watcher[idx] = substrate[idx]*tempPar[idx];
 			}
 //		tempDos[idx] = probe;
 		}
 
 	        else {
-                        tempDos[idx] = dosMatrix[idx];
+                        tempDos[idx] = Ematrix[idx];
                 }
 	}
 }	
+
+__global__ void subAdd(int intN, REAL *particles,REAL *potentials,REAL *substrate){
+
+         int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+         if(idx<intN*intN) {
+		potentials[idx] = potentials[idx] + substrate[idx]*particles[idx];
+	}
+
+}
 
 __global__ void potAdd(int i1, int j1, int intN,REAL *particles,REAL *boxR,REAL *potentials){
         int x,y;
@@ -1130,11 +1182,29 @@ __global__ void potAdd(int i1, int j1, int intN,REAL *particles,REAL *boxR,REAL 
 
                         distance1 = boxR[i1 + intN*j1 + intN*intN*x + intN*intN*intN*y];
                         if (distance1 > 0) {
-                       		potentials[idx] = potentials[idx] - changeToV/distance1;
+                       		potentials[idx] = potentials[idx] -.5*changeToV/distance1; // .5 since Im coming from neutral
                         }
 			
 			
 		}
+		
+		if (particles[i1 + intN*j1] == -1) {
+
+                        yPre = idx/intN;//if it works
+                        xPre = idx%intN;//it works
+                        x = (int) G_mod(xPre + (intN/2 - i1),intN);
+                        y = (int) G_mod(yPre + (intN/2 - j1),intN);
+
+                        distance1 = boxR[i1 + intN*j1 + intN*intN*x + intN*intN*intN*y];
+                        if (distance1 > 0) {
+                                potentials[idx] = potentials[idx] + .5*changeToV/distance1;
+                        }
+
+
+                }
+
+		
+
 	}
 }
 
@@ -1147,7 +1217,7 @@ __global__ void potSub(int i1, int j1, int intN,REAL *particles,REAL *boxR,REAL 
 
          int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
          if(idx<intN*intN) {
-                if (particles[i1 + intN*j1] == 0) {
+                if (particles[i1 + intN*j1] == -1) {
 
                         yPre = idx/intN;//if it works
                         xPre = idx%intN;//it works
@@ -1161,25 +1231,134 @@ __global__ void potSub(int i1, int j1, int intN,REAL *particles,REAL *boxR,REAL 
 
 
                 }
+                if (particles[i1 + intN*j1] == 1) {
+
+
+ 	                yPre = idx/intN;//if it works
+                        xPre = idx%intN;//it works
+                        x = (int) G_mod(xPre + (intN/2 - i1),intN);
+                        y = (int) G_mod(yPre + (intN/2 - j1),intN);
+
+                        distance1 = boxR[i1 + intN*j1 + intN*intN*x + intN*intN*intN*y];
+                        if (distance1 > 0) {
+                                potentials[idx] = potentials[idx] - changeToV/distance1;
+                        }
+
+
+                }
+	
+
+
+
         }
 }
 
+__global__ void potChange(int i1, int j1, int intN,REAL *particles,REAL *boxR,REAL *potentials,REAL* Ematrix){
+        int x,y;
+        int xPre,yPre;
+        double changeToV = 3.6e-10; // Ke*Q/Kd
+        REAL distance1;
 
-
-__global__ void dosCalc(int intN, REAL *particles,REAL *dosMatrix,REAL *potentials) {
          int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
          if(idx<intN*intN) {
-		dosMatrix[idx] = particles[idx]*potentials[idx];
-		
+
+
+                if (particles[i1 + intN*j1] == 1) {
+			particles[i1 + intN*j1] = 0;
+                        yPre = idx/intN;//if it works
+                        xPre = idx%intN;//it works
+                        x = (int) G_mod(xPre + (intN/2 - i1),intN);
+                        y = (int) G_mod(yPre + (intN/2 - j1),intN);
+
+                        distance1 = boxR[i1 + intN*j1 + intN*intN*x + intN*intN*intN*y];
+                        if (distance1 > 0) {
+                                potentials[idx] = potentials[idx] + changeToV/distance1;
+//				potentials[idx] = 999;
+                        }
+
+
+                if(particles[idx] == 0) {
+                        Ematrix[idx] = potentials[idx];
+//                	if (distance1 == 0) {
+//				Ematrix[idx] = -potentials[idx];
+//			}
+		}
+                else {
+                        Ematrix[idx] = -potentials[idx];
+//			if (distance1 == 0) {
+//				Ematrix[idx] = potentials[idx];
+//                        }
+                }
+
+
+                }
+				
+		else {
+			particles[i1 + intN*j1] = 1;
+                        yPre = idx/intN;//if it works
+                        xPre = idx%intN;//it works
+                        x = (int) G_mod(xPre + (intN/2 - i1),intN);
+                        y = (int) G_mod(yPre + (intN/2 - j1),intN);
+
+                        distance1 = boxR[i1 + intN*j1 + intN*intN*x + intN*intN*intN*y];
+                        if (distance1 > 0) {
+                                potentials[idx] = potentials[idx] - changeToV/distance1;
+                      }
+
+                if(particles[idx] == 0) {
+                        Ematrix[idx] = potentials[idx];
+//			if (distance1 == 0) {
+//                                Ematrix[idx] = -potentials[idx];
+//                        }
+                }
+                else {
+                        Ematrix[idx] = -potentials[idx];
+//			if (distance1 == 0) {
+//                                Ematrix[idx] = potentials[idx];
+//                        }
+                }
+
+
+
+                }
+
+
+
+	}
+
+}
+
+
+__global__ void findE(int intN, REAL *particles,REAL *Ematrix,REAL *potentials,REAL *substrate) {
+         int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+         if(idx<intN*intN) {
+			Ematrix[idx] = particles[idx]*potentials[idx] + particles[idx]*substrate[idx];
+//			Ematrix[idx] = particles[idx]*potentials[idx];
 	}
 
 
 }
+
+
+__global__ void dosChange(int intN, REAL *particles,REAL *Ematrix,REAL *potentials) {
+         int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+         if(idx<intN*intN) {
+		if(particles[idx] == 0) {                        
+			Ematrix[idx] = potentials[idx];
+		}
+		else {
+			Ematrix[idx] = -potentials[idx];
+		}
+        }
+
+
+}
+
 __global__ void particleDrop(int intN,int i ,int j,int newParticle,REAL *particles){
 	particles[i + intN*j] = newParticle;
 }
 
-__global__ void dosSwap(int i1, int j1, int i2, int j2,int intN,REAL *particles,REAL *boxR,REAL *potentials){ 
+__global__ void potSwap(int i1, int j1, int i2, int j2,int intN,REAL *particles,REAL *boxR,REAL *potentials){ 
         int x,y;
 	int xPre,yPre;
         double changeToV = 3.6e-10; // Ke*Q/Kd
@@ -1189,7 +1368,7 @@ __global__ void dosSwap(int i1, int j1, int i2, int j2,int intN,REAL *particles,
 
 	 int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
 	 if(idx<intN*intN) {
-//		before = dosMatrix[idx];
+//		before = Ematrix[idx];
 	        if (particles[i1 + intN*j1] != particles[i2 + intN*j2]) {
 
 			yPre = idx/intN;//if it works
@@ -1210,49 +1389,39 @@ __global__ void dosSwap(int i1, int j1, int i2, int j2,int intN,REAL *particles,
                        }
 
 
-  //                      x = changeCoordinates(intN, i2, xPre);
-//                        y = changeCoordinates(intN, j2, yPre);
+
 
 			x = (int) G_mod(xPre + ( intN/2 - i2),intN);
                         y = (int) G_mod(yPre + (intN/2 - j2),intN);
-//			x = xPre;
-//			y = yPre;
 			
                         distance2 = boxR[i2 + intN*j2 + intN*intN*x + intN*intN*intN*y];//might be the other way
 
 			if (distance2 > 0) {
                                 if (particles[i2 + intN*j2] == 1) {
 					potentials[idx] = potentials[idx] + changeToV/distance2;
-//					dosMatrix[idx] = dosMatrix[idx] + particles[idx]*changeToV/distance2;
 				 }
                                 else {
 					potentials[idx] = potentials[idx] - changeToV/distance2;
-//					dosMatrix[idx] = dosMatrix[idx] - particles[idx]*changeToV/distance2;
 		                }
 			}
-                       else {
-    //                           dosMatrix[idx] = potentials[idx]*particles[idx];
-                       }
+		
 		}
-//		after = dosMatrix[idx];
-//		dosMatrix[idx] = 1e9*(after-before);
-//		dosMatrix[idx] = after;
 
         }
 }
 
-void C_particleForce(REAL* potentials, REAL * boxR, REAL *dosMatrix,REAL *particles,int intN, int i1, int j1,int i2,int j2,int threads, int blocks) {
+void C_particleForce(REAL* substrate,REAL* potentials, REAL * boxR, REAL *Ematrix,REAL *particles,int intN, int i1, int j1,int i2,int j2,int threads, int blocks) {
 			
-			dosSwap<<<blocks,threads>>>(i1, j1, i2, j2,intN,particles,boxR,potentials);
+			potSwap<<<blocks,threads>>>(i1, j1, i2, j2,intN,particles,boxR,potentials);
 			particleSwap<<<blocks,threads>>>(i1, j1, i2,j2,intN,particles);
-			dosCalc<<<blocks,threads>>>(intN, particles,dosMatrix,potentials);
+			findE<<<blocks,threads>>>(intN, particles,Ematrix,potentials,substrate);
 
 
 }
 
-void C_particlePick(REAL* potentials,REAL * results, REAL * boxR, REAL *dosMatrix,REAL *particles,int intN, int i, int j,int threads, int blocks) {
+void C_particlePick(REAL *substrate,REAL* potentials,REAL * results, REAL * boxR, REAL *Ematrix,REAL *particles,int intN, int i, int j,int threads, int blocks) {
 /*
-printBoxGPU(particles,intN,"pBox.txt");
+//printBoxGPU(particles,intN,"pBox.txt");
 cout<<i<<" "<<j<<" "<<endl;
 for (int q = 0; q < 5; q++) {
       cout<<results[q]<<endl;
@@ -1268,40 +1437,41 @@ for (int q = 0; q < 5; q++) {
 
                 if ((results[1] > results[2] ) &&(results[1] > results[3] ) &&(results[1] > results[4] )  ) {
 			
-			dosSwap<<<blocks,threads>>>( i, j, iPrev,j,intN,particles,boxR,potentials);	
+			potSwap<<<blocks,threads>>>( i, j, iPrev,j,intN,particles,boxR,potentials);	
 			particleSwap<<<blocks,threads>>>(i, j, iPrev,j,intN,particles);
-			dosCalc<<<blocks,threads>>>(intN, particles,dosMatrix,potentials);
+			findE<<<blocks,threads>>>(intN, particles,Ematrix,potentials,substrate);
 
 //cout<<iPrev<<" "<<j<<endl;
 		}
 
                 else if ((results[2] > results[3] ) &&(results[2] > results[4] )) {
-                	dosSwap<<<blocks,threads>>>( i, j, i,jPrev,intN,particles,boxR,potentials);
+                	potSwap<<<blocks,threads>>>( i, j, i,jPrev,intN,particles,boxR,potentials);
 			particleSwap<<<blocks,threads>>>(i, j, i,jPrev,intN,particles);
-			dosCalc<<<blocks,threads>>>(intN, particles,dosMatrix,potentials);
+			findE<<<blocks,threads>>>(intN, particles,Ematrix,potentials,substrate);
 
 //cout<<i<<" "<<jPrev<<endl;
 		}
 
                 else if (results[3] > results[4]) {
-   	            	dosSwap<<<blocks,threads>>>( i, j, iPost,j,intN,particles,boxR,potentials);
+   	            	potSwap<<<blocks,threads>>>( i, j, iPost,j,intN,particles,boxR,potentials);
 			particleSwap<<<blocks,threads>>>(i, j, iPost,j,intN,particles);
-			dosCalc<<<blocks,threads>>>(intN, particles,dosMatrix,potentials);
+			findE<<<blocks,threads>>>(intN, particles,Ematrix,potentials,substrate);
 
 //cout<<iPost<<" "<<j<<endl;
 		}
 
                 else {
-			dosSwap<<<blocks,threads>>>( i, j, i,jPost,intN,particles,boxR,potentials);
+			potSwap<<<blocks,threads>>>( i, j, i,jPost,intN,particles,boxR,potentials);
                		particleSwap<<<blocks,threads>>>(i, j, i,jPost,intN,particles);
-			dosCalc<<<blocks,threads>>>(intN, particles,dosMatrix,potentials);
+			findE<<<blocks,threads>>>(intN, particles,Ematrix,potentials,substrate);
 
 //cout<<i<<" "<<jPost<<endl;
 		 }
         }
 }
 
-void fastTest(REAL* potentials,REAL *dosMatrix, REAL *tempDos,REAL *tempPar,REAL *tempPot, REAL *particles, REAL *boxR,int i, int j, int intN,int threads, int blocks) {
+
+void fastTest(REAL *watcher,REAL* substrate,REAL* potentials,REAL *Ematrix, REAL *tempDos,REAL *tempPar,REAL *tempPot, REAL *particles, REAL *boxR,int i, int j, int intN,int threads, int blocks) {
         
 	int iPrev,jPrev,iPost,jPost;
         iPrev = C_mod(i - 1,intN);
@@ -1310,41 +1480,36 @@ void fastTest(REAL* potentials,REAL *dosMatrix, REAL *tempDos,REAL *tempPar,REAL
         jPost = C_mod(j + 1,intN);
 	REAL result;
 	thrust::device_ptr<REAL> p_tempDos = thrust::device_pointer_cast(tempDos);
-	thrust::device_ptr<REAL> p_dosMatrix = thrust::device_pointer_cast(dosMatrix);	
+	thrust::device_ptr<REAL> p_Ematrix = thrust::device_pointer_cast(Ematrix);	
 	REAL results[5];
 
-//	fastSwap<<<blocks,threads>>>(i, j, i,  j, intN,particles,boxR,dosMatrix, tempDos,potentials);
-	result = thrust::reduce(p_dosMatrix, p_dosMatrix + intN*intN);
+	result = thrust::reduce(p_Ematrix, p_Ematrix + intN*intN);
 	results[0] = result;	
 
-	slowSwap<<<blocks,threads>>>( i,j, iPrev, j, intN, tempPar,tempPot,tempDos,particles,potentials,dosMatrix,boxR);
-//	fastSwap<<<blocks,threads>>>(i, j, iPrev,  j, intN,particles,boxR,dosMatrix, tempDos,potentials);
+	slowSwap<<<blocks,threads>>>( i,j, iPrev, j, intN, tempPar,tempPot,tempDos,particles,potentials,Ematrix,boxR,substrate,watcher);
 	result = thrust::reduce(p_tempDos, p_tempDos + intN*intN);
 	results[1] = result;	
 
-        slowSwap<<<blocks,threads>>>( i,j, i, jPrev, intN, tempPar,tempPot,tempDos,particles,potentials,dosMatrix,boxR);
-//	fastSwap<<<blocks,threads>>>(i, j, i,  jPrev, intN,particles,boxR,dosMatrix, tempDos,potentials);
+        slowSwap<<<blocks,threads>>>( i,j, i, jPrev, intN, tempPar,tempPot,tempDos,particles,potentials,Ematrix,boxR,substrate,watcher);
         result = thrust::reduce(p_tempDos, p_tempDos + intN*intN);
 	results[2] = result;
 
-        slowSwap<<<blocks,threads>>>( i,j, iPost, j, intN, tempPar,tempPot,tempDos,particles,potentials,dosMatrix,boxR);
-//	fastSwap<<<blocks,threads>>>(i, j, iPost,  j, intN,particles,boxR,dosMatrix, tempDos,potentials);
+        slowSwap<<<blocks,threads>>>( i,j, iPost, j, intN, tempPar,tempPot,tempDos,particles,potentials,Ematrix,boxR,substrate,watcher);
         result = thrust::reduce(p_tempDos, p_tempDos + intN*intN);
 	results[3] = result;	
 
-        slowSwap<<<blocks,threads>>>( i,j, i, jPost, intN, tempPar,tempPot,tempDos,particles,potentials,dosMatrix,boxR);
-//	fastSwap<<<blocks,threads>>>(i, j, i,  jPost, intN,particles,boxR,dosMatrix, tempDos,potentials);
+        slowSwap<<<blocks,threads>>>( i,j, i, jPost, intN, tempPar,tempPot,tempDos,particles,potentials,Ematrix,boxR,substrate,watcher);
         result = thrust::reduce(p_tempDos, p_tempDos + intN*intN);
 	results[4] = result;	
 
-	C_particlePick(potentials, results,  boxR, dosMatrix,particles, intN,  i,  j, threads,  blocks);	
+	C_particlePick(substrate,potentials, results,  boxR, Ematrix,particles, intN,  i,  j, threads,  blocks);	
 
 
 }
 
 
 
-void spiral(int index,double L,int intN,int blocks, int threads,REAL *particles,REAL *potentials,REAL *g_itemp,REAL *g_otemp,REAL *boxR,REAL *sumArray,REAL *dosMatrix, REAL *tempDos,REAL* tempPar,REAL *tempPot) { 
+void spiral(int index,double L,int intN,int blocks, int threads,REAL *particles,REAL *potentials,REAL *g_itemp,REAL *g_otemp,REAL *boxR,REAL *sumArray,REAL *Ematrix, REAL *tempDos,REAL* tempPar,REAL *tempPot,REAL *substrate,REAL *watcher) { 
 	int xMod,yMod,nLevels,xStart,yStart,ringLevel,ringLength,xNow,yNow,xCount,yCount;
 	nLevels = 5;
 	xStart = index%intN;
@@ -1361,28 +1526,28 @@ void spiral(int index,double L,int intN,int blocks, int threads,REAL *particles,
 			yNow = yNow;
 			xMod = C_mod(xNow,intN);
 			yMod = C_mod(yNow,intN);
-			fastTest(potentials,dosMatrix, tempDos,tempPar,tempPot, particles, boxR, xMod, yMod,  intN, threads, blocks);
+			fastTest(watcher,substrate,potentials,Ematrix, tempDos,tempPar,tempPot, particles, boxR, xMod, yMod,  intN, threads, blocks);
 		}
 		for (yCount = 1; yCount < ringLength; yCount++) {
 			xNow = xNow;
 			yNow = yNow - 1;
 			xMod = C_mod(xNow,intN);
                         yMod = C_mod(yNow,intN);
-			fastTest(potentials,dosMatrix, tempDos,tempPar,tempPot, particles, boxR, xMod, yMod,  intN, threads, blocks);
+			fastTest(watcher,substrate,potentials,Ematrix, tempDos,tempPar,tempPot, particles, boxR, xMod, yMod,  intN, threads, blocks);
 		}
                 for (xCount = 1; xCount < ringLength; xCount++) {
                         xNow = xNow + 1;
                         yNow = yNow;
                         xMod = C_mod(xNow,intN);
                         yMod = C_mod(yNow,intN);
-                	fastTest(potentials,dosMatrix, tempDos,tempPar,tempPot, particles, boxR, xMod, yMod,  intN, threads, blocks);
+                	fastTest(watcher,substrate,potentials,Ematrix, tempDos,tempPar,tempPot, particles, boxR, xMod, yMod,  intN, threads, blocks);
 		}
 		for (yCount = 1; yCount < ringLength; yCount++) {
                         xNow = xNow;
                         yNow = yNow + 1;
                         xMod = C_mod(xNow,intN);
                         yMod = C_mod(yNow,intN);
-			fastTest(potentials,dosMatrix, tempDos,tempPar,tempPot, particles, boxR, xMod, yMod,  intN, threads, blocks);
+			fastTest(watcher,substrate,potentials,Ematrix, tempDos,tempPar,tempPot, particles, boxR, xMod, yMod,  intN, threads, blocks);
                 }
 
 
@@ -1421,12 +1586,14 @@ __global__ void checkRange(int index,REAL *rangeMatrix,int intN) {
 
 }
 
-int checkStable(REAL* tempPar,REAL *tempPot, REAL *tempDos,REAL *potentials,REAL *boxR,REAL * dosMatrix, REAL * particles,int c_stable,REAL min_value,REAL max_value,int min_offset,int max_offset,int intN,int blocks,int threads){
+int checkStable(REAL *watcher,REAL *substrate,REAL* tempPar,REAL *tempPot, REAL *tempDos,REAL *potentials,REAL *boxR,REAL * Ematrix, REAL * particles,int c_stable,REAL min_value,REAL max_value,int min_offset,int max_offset,int intN,int blocks,int threads){
 	int i1,i2,j1,j2;
 //	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
 
 //	if(idx < 1) {	
-	if (min_value < max_value ) {
+//	if (min_value > max_value ) {
+        if (min_value + max_value < 0) {
+	
 /*
 		i1 = min_offset/intN;
 		j1 = min_offset%intN;
@@ -1440,9 +1607,11 @@ int checkStable(REAL* tempPar,REAL *tempPot, REAL *tempDos,REAL *potentials,REAL
 
 
 //cout<<i1<<" "<<j1<<" "<<i2<<" "<<j2<<endl;
-		slowSwap<<<blocks,threads>>>( i1,j1, i2, j2, intN, tempPar,tempPot,tempDos,particles,potentials,dosMatrix,boxR);			
+//		slowSwap<<<blocks,threads>>>( i1,j1, i2, j2, intN, tempPar,tempPot,tempDos,particles,potentials,Ematrix,boxR,substrate,watcher); dont think i need this
+
+                potSwap<<<blocks,threads>>>(i1, j1, i2, j2,intN,particles,boxR,potentials);
 		particleSwap<<<blocks,threads>>>(i1, j1, i2,j2,intN,particles);
-		dosCalc<<<blocks,threads>>>(intN, particles,dosMatrix,potentials);
+		findE<<<blocks,threads>>>(intN, particles,Ematrix,potentials,substrate);
 
 	
 		c_stable = 0;
@@ -1453,42 +1622,42 @@ int checkStable(REAL* tempPar,REAL *tempPot, REAL *tempDos,REAL *potentials,REAL
 	return c_stable;
 }
 
-int highsToLows(int max_offset,int min_offset,REAL max_value,REAL min_value,int c_stable,REAL * sumArray,REAL *boxR,REAL *g_itemp,REAL *g_otemp, REAL *particles,REAL *potentials,REAL *reducedSum,REAL *rangeMatrix, REAL *dosMatrix, REAL *tempDos,REAL *tempPar,REAL *tempPot, int intN,double L,int blocks,int threads) {
-	c_stable = checkStable(tempPar,tempPot,tempDos,potentials,boxR, dosMatrix,  particles, c_stable, min_value, max_value, min_offset,max_offset,intN, blocks,threads);
+int highsToLows(int max_offset,int min_offset,REAL max_value,REAL min_value,int c_stable,REAL * sumArray,REAL *boxR,REAL *g_itemp,REAL *g_otemp, REAL *particles,REAL *potentials,REAL *reducedSum,REAL *rangeMatrix, REAL *Ematrix, REAL *tempDos,REAL *tempPar,REAL *tempPot,REAL *substrate,REAL* watcher, int intN,double L,int blocks,int threads) {
+	c_stable = checkStable(watcher,substrate,tempPar,tempPot,tempDos,potentials,boxR, Ematrix,  particles, c_stable, min_value, max_value, min_offset,max_offset,intN, blocks,threads);
 
 	if (c_stable == 0) {
 		
-		spiral(max_offset, L, intN,blocks, threads,particles,potentials,g_itemp,g_otemp,boxR,sumArray,dosMatrix,tempDos,tempPar,tempPot);
-		spiral(min_offset, L, intN,blocks, threads,particles,potentials,g_itemp,g_otemp,boxR,sumArray,dosMatrix,tempDos,tempPar,tempPot);
+		spiral(max_offset, L, intN,blocks, threads,particles,potentials,g_itemp,g_otemp,boxR,sumArray,Ematrix,tempDos,tempPar,tempPot,substrate,watcher);
+		spiral(min_offset, L, intN,blocks, threads,particles,potentials,g_itemp,g_otemp,boxR,sumArray,Ematrix,tempDos,tempPar,tempPot,substrate,watcher);
 	}
 		
 	return c_stable;
 }
 
-__global__ void grabPositives(REAL *extraArray,REAL* dosMatrix,int N) {
+__global__ void grabPositives(REAL* particles,REAL *extraArray,REAL* Ematrix,int N,int posNeg) {
  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
 	if (idx < N*N) {
-		extraArray[idx] = 9999999;//might cause problems if not high enough
-		if(dosMatrix[idx] > 0) {
-			extraArray[idx] = dosMatrix[idx];
+		extraArray[idx] = 0;
+		if(particles[idx] == posNeg) {
+			extraArray[idx] = Ematrix[idx];
 		}
 	}
 
 
 }
 
-__global__ void matrixCopy(int intN, REAL * matrixIn,REAL *matrixOut){
-	 int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+void __global__ lastFlip(int intN,REAL *invertedDos,REAL *particles) {
+	int idx = blockIdx.x*blockDim.x + threadIdx.x;
         if (idx < intN*intN) {
-		matrixOut[idx] = matrixIn[idx];
-		
+		if (particles[idx] == -1) {
+			invertedDos[idx] = -invertedDos[idx];
+		}
 	}
-
 }
 
-void dosInvert (int intN,int threads,int blocks,REAL *invertedDos,REAL* particles,REAL *potentials,REAL *boxR,REAL* tempDos,REAL *tempPar,REAL * tempPot,REAL *dosMatrix) {//should work for nParticles > 1
+void dosInvert (int intN,int threads,int blocks,REAL *invertedDos,REAL* particles,REAL *potentials,REAL *boxR,REAL* tempDos,REAL *tempPar,REAL * tempPot,REAL *Ematrix) {//should work for nParticles > 1
 	int i,j;
-	double result0, result1,result2;
+	double  result1,result2;
 	thrust::device_ptr<REAL> g_go =  thrust::device_pointer_cast(tempDos);
 
 	
@@ -1496,61 +1665,63 @@ void dosInvert (int intN,int threads,int blocks,REAL *invertedDos,REAL* particle
 	for(j = 0; j < intN; j++) {
 		for (i = 0; i < intN; i++) {
 
+//i = 20;
+//j = 20;
+
 			matrixCopy<<<blocks,threads>>>(intN, potentials ,tempPot);
 			matrixCopy<<<blocks,threads>>>(intN, particles , tempPar);
-			matrixCopy<<<blocks,threads>>>(intN, dosMatrix ,tempDos);
+			matrixCopy<<<blocks,threads>>>(intN, Ematrix ,tempDos);
 
-			result0 = thrust::reduce(g_go, g_go + intN*intN);
-
-			
-
-			particleDrop<<<blocks,threads>>>(intN, i ,j,0,tempPar);
-			potSub<<<blocks,threads>>>( i, j,  intN,tempPar,boxR,tempPot);
-			dosCalc<<<blocks,threads>>>(intN, tempPar,tempDos,tempPot);
+			potChange<<<blocks,threads>>>(i, j,  intN,tempPar,boxR,tempPot,tempDos);
+//			dosChange<<<blocks,threads>>>(intN, tempPar,tempDos,tempPot);
 			result1 = thrust::reduce(g_go, g_go + intN*intN);
-			dosPut<<<blocks,threads>>>( i, j,intN,invertedDos, result1);
-			if( result0 == result1) {
-				particleDrop<<<blocks,threads>>>(intN, i ,j,1,tempPar);
-				potAdd<<<blocks,threads>>>( i, j,  intN,tempPar,boxR,tempPot);
-				dosCalc<<<blocks,threads>>>(intN, tempPar,tempDos,tempPot);
-				result2 = thrust::reduce(g_go, g_go + intN*intN);
-				dosPut<<<blocks,threads>>>( i, j,intN,invertedDos, result2);
-			}
+
+			potChange<<<blocks,threads>>>(i, j,  intN,tempPar,boxR,tempPot,tempDos);
+//			dosChange<<<blocks,threads>>>(intN, tempPar,tempDos,tempPot);
+			result2 = thrust::reduce(g_go, g_go + intN*intN);
+
+			dosPut<<<blocks,threads>>>( i, j,intN,invertedDos, result2 - result1);
+			
+//printBoxGPU(tempPot,intN,"dBox.txt");
+//printBoxGPU(tempPar,intN,"pBox.txt");
 				
 		}
 	}
-
+//lastFlip<<<blocks,threads>>>(intN,invertedDos,tempPar);
+//printBoxGPU(tempPar,intN,"pBox.txt");
 
 
 }
-void switcharoo(int c_stable,REAL *sumArray,REAL *rangeMatrix,REAL *g_temp,REAL *substrate,REAL *extraArray,REAL *g_itemp,REAL *g_otemp,REAL *boxR,REAL *dosMatrix, REAL *particles,REAL *potentials,REAL *reducedSum,REAL *tempDos,REAL *tempPar,REAL *tempPot,REAL *invertedDos,int intN, double L,int slices,int threads, int blocks) {
+void switcharoo(int c_stable,REAL *sumArray,REAL *rangeMatrix,REAL *g_temp,REAL *substrate,REAL *extraArray,REAL *g_itemp,REAL *g_otemp,REAL *boxR,REAL *Ematrix, REAL *particles,REAL *potentials,REAL *reducedSum,REAL *tempDos,REAL *tempPar,REAL *tempPot,REAL *invertedDos,REAL *watcher,int intN, double L,int slices,int threads, int blocks) {
 	int counter = 0;
 	int min_offset,max_offset;
 	REAL min_value,max_value;
-	  thrust::device_ptr<REAL> g_ptr =  thrust::device_pointer_cast(dosMatrix);
-	  thrust::device_ptr<REAL> extra_ptr =  thrust::device_pointer_cast(extraArray);
-		thrust::device_ptr<REAL> inverted_ptr =  thrust::device_pointer_cast(invertedDos);
+	  thrust::device_ptr<REAL> g_ptr =  thrust::device_pointer_cast(Ematrix);
+//	  thrust::device_ptr<REAL> extra_ptr =  thrust::device_pointer_cast(extraArray);
+		thrust::device_ptr<REAL> inverted_ptr =  thrust::device_pointer_cast(extraArray);
 //	dosInvert (intN,threads,blocks,invertedDos, particles,potentials,boxR, tempDos); 
         while (c_stable == 0) {
 	
-		dosInvert (intN,threads,blocks,invertedDos, particles,potentials,boxR, tempDos,tempPar,tempPot,dosMatrix);	     
+//		dosInvert (intN,threads,blocks,invertedDos, particles,potentials,boxR, tempDos,tempPar,tempPot,Ematrix);	     
+
+		grabPositives<<<blocks,threads>>>(particles,extraArray,Ematrix,intN,1);
 
 		min_offset = thrust::min_element(inverted_ptr, inverted_ptr + intN*intN) - inverted_ptr;
 		min_value = *(inverted_ptr + min_offset);
 cout<<min_value<<endl;
 	
-//		grabPositives<<<blocks,threads>>>(extraArray,dosMatrix,N);		
+		grabPositives<<<blocks,threads>>>(particles,extraArray,Ematrix,intN,-1);		
 
-//              max_offset = thrust::min_element(extra_ptr, extra_ptr + N*N) - extra_ptr; //grabbing the smallest positive number
-//              max_value = *(extra_ptr + max_offset);
-//cout<<max_value<<endl;
-		max_offset = thrust::max_element(inverted_ptr, inverted_ptr + intN*intN) - inverted_ptr;
-		max_value = *(inverted_ptr + max_offset);
+              max_offset = thrust::min_element(inverted_ptr, inverted_ptr + intN*intN) - inverted_ptr; //grabbing the smallest positive number
+              max_value = *(inverted_ptr + max_offset);
 cout<<max_value<<endl;
+//		max_offset = thrust::max_element(inverted_ptr, inverted_ptr + intN*intN) - inverted_ptr;
+//		max_value = *(inverted_ptr + max_offset);
+//cout<<max_value<<endl;
 
 //	potentialse = *(g_ptr + max_offset);
 	
-		c_stable = highsToLows( max_offset,min_offset, max_value,min_value,c_stable, sumArray,boxR,g_itemp,g_otemp,particles,potentials,reducedSum,rangeMatrix, dosMatrix, tempDos,tempPar,tempPot, intN, L, blocks,threads);
+		c_stable = highsToLows( max_offset,min_offset, max_value,min_value,c_stable, sumArray,boxR,g_itemp,g_otemp,particles,potentials,reducedSum,rangeMatrix, Ematrix, tempDos,tempPar,tempPot,substrate,watcher, intN, L, blocks,threads);
                 if (counter >= 200) {
                         c_stable = 1;
                 }
@@ -1562,7 +1733,7 @@ cout<<max_value<<endl;
 	
 }
 
-void glatzRelax(int threads,int blocks,double L,double N,REAL* potentials,REAL *substrate, REAL *particles, REAL *reducedSum,REAL *g_itemp, REAL *g_otemp,REAL *boxR,REAL *g_temp,REAL *dosMatrix,REAL *tempDos,REAL *tempPar,REAL *tempPot,REAL *invertedDos) {
+void glatzRelax(int threads,int blocks,double L,double N,REAL* potentials,REAL *substrate, REAL *particles, REAL *reducedSum,REAL *g_itemp, REAL *g_otemp,REAL *boxR,REAL *g_temp,REAL *Ematrix,REAL *tempDos,REAL *tempPar,REAL *tempPot,REAL *invertedDos,REAL *watcher) {
 
 //        int sizeShared = 512*sizeof(REAL)/blocks;
         REAL *rangeMatrix,*extraArray,*sumArray,*hereSum;
@@ -1579,16 +1750,17 @@ void glatzRelax(int threads,int blocks,double L,double N,REAL* potentials,REAL *
 	cudaMalloc(&sumArray,sizeSum*sizeof(REAL));
 	cudaMemcpy(sumArray,hereSum,sizeSum*sizeof(REAL),cudaMemcpyHostToDevice);
 	
-//	G_dos(sumArray,extraArray,boxR,particles,substrate,reducedSum,dosMatrix,potentials,g_temp, slices,N, L, threads,blocks) ;
+//	G_dos(sumArray,extraArray,boxR,particles,substrate,reducedSum,Ematrix,potentials,g_temp, slices,N, L, threads,blocks) ;
 
 	for(j = 0; j < intN; j++) {
 		for(i = 0; i < intN; i++) {
 			potAdd<<<blocks,threads>>>( i, j,  intN,particles,boxR,potentials);
+
 		}
 	}
-
+//	subAdd<<<blocks,threads>>>(intN,particles,potentials,substrate);
 	
-	dosCalc<<<blocks,threads>>>(intN, particles,dosMatrix,potentials); 
+	findE<<<blocks,threads>>>(intN, particles,Ematrix,potentials,substrate); 
 
 
 
@@ -1597,57 +1769,50 @@ for (int t = 0; t < 1; t++) {
 	for(j = 0; j < N; j++) {
 	       	for(i = 0; i < N; i++) {
 //			cout<<i<<" "<<j<<endl;
-			fastTest(potentials,dosMatrix, tempDos,tempPar,tempPot, particles, boxR, i, j,  intN, threads, blocks);
+			fastTest(watcher,substrate,potentials,Ematrix, tempDos,tempPar,tempPot, particles, boxR, i, j,  intN, threads, blocks);
 		}
 	}
 }
 
 
 /*
-particleDrop<<<blocks,threads>>>(intN, 16 ,15,0,particles);
-potSub<<<blocks,threads>>>( 16, 15,  intN,particles,boxR,potentials);
-dosCalc<<<blocks,threads>>>(intN, particles,dosMatrix,potentials);
+particleDrop<<<blocks,threads>>>(intN, 16 ,15,1,particles);
+potAdd<<<blocks,threads>>>( 16, 15,  intN,particles,boxR,potentials,substrate);
+findE<<<blocks,threads>>>(intN, particles,Ematrix,potentials,substrate);
 
 particleDrop<<<blocks,threads>>>(intN, 1 ,16,1,particles);
-potAdd<<<blocks,threads>>>( 1, 16,  intN,particles,boxR,potentials);
-dosCalc<<<blocks,threads>>>(intN, particles,dosMatrix,potentials);
+potAdd<<<blocks,threads>>>( 1, 16,  intN,particles,boxR,potentials,substrate);
+findE<<<blocks,threads>>>(intN, particles,Ematrix,potentials,substrate);
 */
 
 
-//C_particleForce(potentials,boxR, dosMatrix,particles,intN, 16, 16,16,15,threads, blocks);
+//C_particleForce(substrate,potentials,boxR, Ematrix,particles,intN, 16, 16,16,15,threads, blocks);
+
+/*
+	i = 1;
+	j = 1;
+
+fastTest(watcher,substrate,potentials,Ematrix, tempDos,tempPar,tempPot, particles, boxR, i, j,  intN, threads, blocks);
+*/
 
 
-//	i = 1;
-//	j = 15;
-
-//fastTest(potentials,dosMatrix, tempDos,tempPar,tempPot, particles, boxR, i, j,  intN, threads, blocks);
-
-//particleDrop<<<blocks,threads>>>(intN, 14 ,15,0,particles);
-//potAdd<<<blocks,threads>>>( 14, 15,  intN,particles,boxR,potentials);
-//dosCalc<<<blocks,threads>>>(intN, particles,dosMatrix,potentials);
-
-//	i = 31;
-//       j = 0;
-//fastTest(potentials,dosMatrix, tempDos,tempPar,tempPot, particles, boxR,i, j,  intN, threads, blocks);
-
-//        i = 16;
-//        j = 15;
-//fastTest(potentials,dosMatrix, tempDos,tempPar,tempPot, particles, boxR, i, j,  intN, threads, blocks);
 /*
 //move all of i and the first half of j to the second half of j
 int i1,i2,j1,j2;
-for ( i1 = 0; i1 < intN;i1++) {
+-1or ( i1 = 0; i1 < intN;i1++) {
 //for ( i1 = intN-1; i1 >= 0;i1--) {
 
 	for (j1 = 0; j1 < intN/2; j1++) {
 		i2 = i1;
 		j2 = j1 + intN/2;
-		C_particleForce(potentials, boxR, dosMatrix,particles,intN, i1, j1,i2,j2,threads, blocks);
+		C_particleForce(substrate,potentials, boxR, Ematrix,particles,intN, i1, j1,i2,j2,threads, blocks);
 	}
 }
 */
 
-//C_particleForce(potentials,boxR, dosMatrix,particles,intN, 5, 5,25,20,threads, blocks);
+
+
+//C_particleForce(substrate,potentials,boxR, Ematrix,particles,intN, 5, 5,25,20,threads, blocks);
 
 	errorAsk("pair exchange");
 
@@ -1655,21 +1820,21 @@ for ( i1 = 0; i1 < intN;i1++) {
 
 
 //highs to lows
-	switcharoo(c_stable,sumArray,rangeMatrix,g_temp,substrate,extraArray,g_itemp,g_otemp,boxR,dosMatrix, particles,potentials,reducedSum,tempDos,tempPar,tempPot,invertedDos, N,  L,slices,threads, blocks);
+	switcharoo(c_stable,sumArray,rangeMatrix,g_temp,substrate,extraArray,g_itemp,g_otemp,boxR,Ematrix, particles,potentials,reducedSum,tempDos,tempPar,tempPot,invertedDos,watcher, N,  L,slices,threads, blocks);
 	errorAsk("switching highs to lows");
 
 /*
 cout<<"artificial relaxation"<<endl;
 particleDrop<<<blocks,threads>>>(intN, 1 , 8 ,0,particles);
 potSub<<<blocks,threads>>>( 1, 8,  intN,particles,boxR,potentials);
-dosCalc<<<blocks,threads>>>(intN, particles,dosMatrix,potentials);
+findE<<<blocks,threads>>>(intN, particles,Ematrix,potentials,substrate);
 
 particleDrop<<<blocks,threads>>>(intN, 1 ,24,1,particles);
-potAdd<<<blocks,threads>>>( 1, 24,  intN,particles,boxR,potentials);
-dosCalc<<<blocks,threads>>>(intN, particles,dosMatrix,potentials);
-
-        switcharoo(c_stable,sumArray,rangeMatrix,g_temp,substrate,extraArray,g_itemp,g_otemp,boxR,dosMatrix, particles,potentials,reducedSum,tempDos,tempPar,tempPot,invertedDos, N,  L,slices,threads, blocks);
+potAdd<<<blocks,threads>>>( 1, 24,  intN,particles,boxR,potentials,substrate);
+findE<<<blocks,threads>>>(intN, particles,Ematrix,potentials,substrate);
 */
+//        switcharoo(c_stable,sumArray,rangeMatrix,g_temp,substrate,extraArray,g_itemp,g_otemp,boxR,Ematrix, particles,potentials,reducedSum,tempDos,tempPar,tempPot,invertedDos, N,  L,slices,threads, blocks);
+	dosInvert ( intN,threads,blocks,invertedDos, particles,potentials,boxR, tempDos,tempPar,tempPot,Ematrix);
 
 
 
@@ -1703,6 +1868,7 @@ int main(int argc,char *argv[])
 
 	N = 32;
 //	N = 100;
+//	N = 256;
 	muVar = 0;
 //	muVar = 1e-5;
 	
@@ -1722,13 +1888,13 @@ int main(int argc,char *argv[])
 //	L = 7e-6;	
 	L = 1e-8; //10 nm
 //	tSteps = 1000000; //for statistically accurate runs
-//	tSteps = 100; //for potential runs
-	tSteps = 0; // for seeing the fields
+	tSteps = 10000; //for potential runs
+//	tSteps = 0; // for seeing the fields
 //	Steps = 0;
 //	relax = 1;
-	relax = 1; 
+	relax = 0; 
 	
-	REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*dosMatrix,*reducedSum,*g_itemp,*g_otemp,*g_temp,*jumpRecord,*tempDos,*tempPar,*tempPot,*invertedDos;
+	REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*Ematrix,*reducedSum,*g_itemp,*g_otemp,*g_temp,*jumpRecord,*tempDos,*tempPar,*tempPot,*invertedDos,*watcher;
 	xi = L;
 	xVar = 0;
 	yVar = 0;
@@ -1807,13 +1973,13 @@ while( getline(is_file, line) )
 
 	threads=MAXT;
 	blocks=N*N/threads+(N*N%threads==0?0:1);
-
+	cudaMalloc(&watcher,N*N*sizeof(REAL));
         cudaMalloc(&reducedProb,N*N*sizeof(REAL));
 	cudaMalloc(&particles,N*N*sizeof(REAL));
 	cudaMalloc(&probabilities,N*N*sizeof(REAL));
 	cudaMalloc(&potentials,N*N*sizeof(REAL));
 	cudaMalloc(&substrate,N*N*sizeof(REAL));
-	cudaMalloc(&dosMatrix,N*N*sizeof(REAL));
+	cudaMalloc(&Ematrix,N*N*sizeof(REAL));
         cudaMalloc(&tempDos,N*N*sizeof(REAL));
 	cudaMalloc(&tempPar,N*N*sizeof(REAL));
 	cudaMalloc(&tempPot,N*N*sizeof(REAL));
@@ -1827,13 +1993,14 @@ while( getline(is_file, line) )
 	
 
 	herePot =  new REAL[N*N];
-        herePot = C_random(N,0,herePot); 
+	herePot = C_zeros(N, herePot); 
 	hereProb = new REAL[N*N];	
 	hereProb = C_random(N,0,hereProb);
 	hereP = new REAL[N*N];
 //	hereP = C_clump(N,nParticles,hereP);//test relaxation
 	hereP = C_spread(N,nParticles,hereP); //test general potential
 //	hereP = C_random(N,nParticles,hereP);	
+//	hereP = C_random(N,0,hereP); //empty system
 //        hereP = C_more(N,nParticles,hereP);
 	hereXDiff = new REAL[N*N];
 	hereYDiff = new REAL[N*N];
@@ -1852,9 +2019,9 @@ while( getline(is_file, line) )
 	hereP = loadMatrix(hereP,nameP);
  */       
 
-
+	cudaMemcpy(watcher,herePot,N*N*sizeof(REAL),cudaMemcpyHostToDevice);
 	cudaMemcpy(potentials,herePot,N*N*sizeof(REAL),cudaMemcpyHostToDevice);
-	cudaMemcpy(dosMatrix,herePot,N*N*sizeof(REAL),cudaMemcpyHostToDevice);//just filling it with 0s
+	cudaMemcpy(Ematrix,herePot,N*N*sizeof(REAL),cudaMemcpyHostToDevice);//just filling it with 0s
 	cudaMemcpy(substrate,hereS,N*N*sizeof(REAL),cudaMemcpyHostToDevice);
 	cudaMemcpy(boxR,hereBoxR,N*N*N*N*sizeof(REAL),cudaMemcpyHostToDevice);
 	cudaMemcpy(particles,hereP,N*N*sizeof(REAL),cudaMemcpyHostToDevice);
@@ -1862,14 +2029,14 @@ while( getline(is_file, line) )
 	jumpFill<<<blocks,threads>>>(jumpRecord,10000);
 //system is run but results arent output for the relaxation phase
         if (relax == 1) {
-		glatzRelax(threads, blocks, L, N, potentials,substrate, particles, reducedSum,g_itemp, g_otemp,boxR,g_temp,dosMatrix,tempDos,tempPar,tempPot,invertedDos);
+		glatzRelax(threads, blocks, L, N, potentials,substrate, particles, reducedSum,g_itemp, g_otemp,boxR,g_temp,Ematrix,tempDos,tempPar,tempPot,invertedDos,watcher);
 	}
 
 	
 	
 //find the DoS
 
-//      dosMatrix = dosFind(hereP, hereS,herePot,dosMatrix, particles,potentials,boxR, N, L, threads, blocks);  
+//      Ematrix = dosFind(hereP, hereS,herePot,Ematrix, particles,potentials,boxR, N, L, threads, blocks);  
 //	showMove(hereXDiff,N);  
 
 
@@ -1881,8 +2048,11 @@ while( getline(is_file, line) )
 
 //	sprintf(str1, "line.txt");
 //	printBoxCPU(hereXDiff,N,boxName);
+	lastFlip<<<blocks,threads>>>(N,Ematrix,particles);
 	printBoxGPU(particles,N,boxName);
-	printBoxGPU(potentials,N,lineName);
+	printBoxGPU(Ematrix,N,lineName);
+//        printBoxGPU(invertedDos,N,lineName);
+
 //	printLineGPU(jumpRecord,10000,lineName);
 /*
         cudaMemcpy(hereP,jumpRecord,N*N*sizeof(REAL),cudaMemcpyDeviceToHost);
@@ -1913,7 +2083,7 @@ while( getline(is_file, line) )
 	cudaFree(g_itemp);
 	cudaFree(g_otemp);
 	cudaFree(g_temp);
-	cudaFree(dosMatrix);
+	cudaFree(Ematrix);
 	cudaFree(jumpRecord);
 	
 	clock_t end = clock();
