@@ -667,11 +667,10 @@ __global__ void dosPut(int i,int j,int intN,REAL *Ematrix,REAL sum) {
 }
 
 
- void G_dos(REAL * sumArray,REAL *extraArray,REAL *boxR,REAL *particles,REAL *substrate,REAL *reducedSum,REAL *Ematrix,REAL *potentials,REAL *g_temp,int slices,double N,double L,int threads,int blocks) {
+ void G_dos(REAL * sumArray,REAL *extraArray,REAL *boxR,REAL *particles,REAL *substrate,REAL *Ematrix,REAL *potentials,int slices,double N,double L,int threads,int blocks) {
 	int i,j,intN;//not sure about Sums
 	intN = (int) N;
         thrust::device_ptr<REAL> g_go = thrust::device_pointer_cast(potentials);
-        thrust::device_ptr<REAL> g_return = thrust::device_pointer_cast(reducedSum);
 	thrust::device_ptr<REAL> sumArrayPtr = thrust::device_pointer_cast(sumArray);
 	thrust::device_ptr<REAL> extraArrayPtr = thrust::device_pointer_cast(extraArray);
 	REAL result;
@@ -1513,7 +1512,7 @@ void fastTest(REAL *watcher,REAL* substrate,REAL* potentials,REAL *Ematrix, REAL
 
 
 
-void spiral(int index,double L,int intN,int blocks, int threads,REAL *particles,REAL *potentials,REAL *g_itemp,REAL *g_otemp,REAL *boxR,REAL *sumArray,REAL *Ematrix, REAL *tempDos,REAL* tempPar,REAL *tempPot,REAL *substrate,REAL *watcher) { 
+void spiral(int index,double L,int intN,int blocks, int threads,REAL *particles,REAL *potentials,REAL *boxR,REAL *sumArray,REAL *Ematrix, REAL *tempDos,REAL* tempPar,REAL *tempPot,REAL *substrate,REAL *watcher) { 
 	int xMod,yMod,nLevels,xStart,yStart,ringLevel,ringLength,xNow,yNow,xCount,yCount;
 	nLevels = 5;
 	xStart = index%intN;
@@ -1626,13 +1625,13 @@ int checkStable(REAL *watcher,REAL *substrate,REAL* tempPar,REAL *tempPot, REAL 
 	return c_stable;
 }
 
-int highsToLows(int max_offset,int min_offset,REAL max_value,REAL min_value,int c_stable,REAL * sumArray,REAL *boxR,REAL *g_itemp,REAL *g_otemp, REAL *particles,REAL *potentials,REAL *reducedSum,REAL *rangeMatrix, REAL *Ematrix, REAL *tempDos,REAL *tempPar,REAL *tempPot,REAL *substrate,REAL* watcher, int intN,double L,int blocks,int threads) {
+int highsToLows(int max_offset,int min_offset,REAL max_value,REAL min_value,int c_stable,REAL * sumArray,REAL *boxR, REAL *particles,REAL *potentials,REAL *rangeMatrix, REAL *Ematrix, REAL *tempDos,REAL *tempPar,REAL *tempPot,REAL *substrate,REAL* watcher, int intN,double L,int blocks,int threads) {
 	c_stable = checkStable(watcher,substrate,tempPar,tempPot,tempDos,potentials,boxR, Ematrix,  particles, c_stable, min_value, max_value, min_offset,max_offset,intN, blocks,threads);
 
 	if (c_stable == 0) {
 		
-		spiral(max_offset, L, intN,blocks, threads,particles,potentials,g_itemp,g_otemp,boxR,sumArray,Ematrix,tempDos,tempPar,tempPot,substrate,watcher);
-		spiral(min_offset, L, intN,blocks, threads,particles,potentials,g_itemp,g_otemp,boxR,sumArray,Ematrix,tempDos,tempPar,tempPot,substrate,watcher);
+		spiral(max_offset, L, intN,blocks, threads,particles,potentials,boxR,sumArray,Ematrix,tempDos,tempPar,tempPot,substrate,watcher);
+		spiral(min_offset, L, intN,blocks, threads,particles,potentials,boxR,sumArray,Ematrix,tempDos,tempPar,tempPot,substrate,watcher);
 	}
 		
 	return c_stable;
@@ -1696,7 +1695,7 @@ void dosInvert (int intN,int threads,int blocks,REAL *invertedDos,REAL* particle
 
 
 }
-void switcharoo(int c_stable,REAL *sumArray,REAL *rangeMatrix,REAL *g_temp,REAL *substrate,REAL *extraArray,REAL *g_itemp,REAL *g_otemp,REAL *boxR,REAL *Ematrix, REAL *particles,REAL *potentials,REAL *reducedSum,REAL *tempDos,REAL *tempPar,REAL *tempPot,REAL *invertedDos,REAL *watcher,int intN, double L,int slices,int threads, int blocks) {
+void switcharoo(int c_stable,REAL *sumArray,REAL *rangeMatrix,REAL *substrate,REAL *extraArray,REAL *boxR,REAL *Ematrix, REAL *particles,REAL *potentials,REAL *tempDos,REAL *tempPar,REAL *tempPot,REAL *invertedDos,REAL *watcher,int intN, double L,int slices,int threads, int blocks) {
 	int counter = 0;
 	int min_offset,max_offset;
 	REAL min_value,max_value;
@@ -1712,20 +1711,20 @@ void switcharoo(int c_stable,REAL *sumArray,REAL *rangeMatrix,REAL *g_temp,REAL 
 
 		min_offset = thrust::min_element(inverted_ptr, inverted_ptr + intN*intN) - inverted_ptr;
 		min_value = *(inverted_ptr + min_offset);
-cout<<min_value<<endl;
+//cout<<min_value<<endl;
 	
 		grabPositives<<<blocks,threads>>>(particles,extraArray,Ematrix,intN,-1);		
 
               max_offset = thrust::min_element(inverted_ptr, inverted_ptr + intN*intN) - inverted_ptr; //grabbing the smallest positive number
               max_value = *(inverted_ptr + max_offset);
-cout<<max_value<<endl;
+//cout<<max_value<<endl;
 //		max_offset = thrust::max_element(inverted_ptr, inverted_ptr + intN*intN) - inverted_ptr;
 //		max_value = *(inverted_ptr + max_offset);
 //cout<<max_value<<endl;
 
 //	potentialse = *(g_ptr + max_offset);
 	
-		c_stable = highsToLows( max_offset,min_offset, max_value,min_value,c_stable, sumArray,boxR,g_itemp,g_otemp,particles,potentials,reducedSum,rangeMatrix, Ematrix, tempDos,tempPar,tempPot,substrate,watcher, intN, L, blocks,threads);
+		c_stable = highsToLows( max_offset,min_offset, max_value,min_value,c_stable, sumArray,boxR,particles,potentials,rangeMatrix, Ematrix, tempDos,tempPar,tempPot,substrate,watcher, intN, L, blocks,threads);
                 if (counter >= 200) {
                         c_stable = 1;
                 }
@@ -1737,7 +1736,7 @@ cout<<max_value<<endl;
 	
 }
 
-void glatzRelax(int threads,int blocks,double L,double N,REAL* potentials,REAL *substrate, REAL *particles, REAL *reducedSum,REAL *g_itemp, REAL *g_otemp,REAL *boxR,REAL *g_temp,REAL *Ematrix,REAL *tempDos,REAL *tempPar,REAL *tempPot,REAL *invertedDos,REAL *watcher) {
+void glatzRelax(int threads,int blocks,double L,double N,REAL* potentials,REAL *substrate, REAL *particles,REAL *boxR,REAL *Ematrix,REAL *tempDos,REAL *tempPar,REAL *tempPot,REAL *invertedDos,REAL *watcher) {
 
 //        int sizeShared = 512*sizeof(REAL)/blocks;
         REAL *rangeMatrix,*extraArray,*sumArray,*hereSum;
@@ -1754,7 +1753,7 @@ void glatzRelax(int threads,int blocks,double L,double N,REAL* potentials,REAL *
 	cudaMalloc(&sumArray,sizeSum*sizeof(REAL));
 	cudaMemcpy(sumArray,hereSum,sizeSum*sizeof(REAL),cudaMemcpyHostToDevice);
 	
-//	G_dos(sumArray,extraArray,boxR,particles,substrate,reducedSum,Ematrix,potentials,g_temp, slices,N, L, threads,blocks) ;
+//	G_dos(sumArray,extraArray,boxR,particles,substrate,Ematrix,potentials, slices,N, L, threads,blocks) ;
 
 	for(j = 0; j < intN; j++) {
 		for(i = 0; i < intN; i++) {
@@ -1824,7 +1823,7 @@ int i1,i2,j1,j2;
 
 
 //highs to lows
-	switcharoo(c_stable,sumArray,rangeMatrix,g_temp,substrate,extraArray,g_itemp,g_otemp,boxR,Ematrix, particles,potentials,reducedSum,tempDos,tempPar,tempPot,invertedDos,watcher, N,  L,slices,threads, blocks);
+	switcharoo(c_stable,sumArray,rangeMatrix,substrate,extraArray,boxR,Ematrix, particles,potentials,tempDos,tempPar,tempPot,invertedDos,watcher, N,  L,slices,threads, blocks);
 	errorAsk("switching highs to lows");
 
 /*
@@ -1837,7 +1836,7 @@ particleDrop<<<blocks,threads>>>(intN, 1 ,24,1,particles);
 potAdd<<<blocks,threads>>>( 1, 24,  intN,particles,boxR,potentials,substrate);
 findE<<<blocks,threads>>>(intN, particles,Ematrix,potentials,substrate);
 */
-//        switcharoo(c_stable,sumArray,rangeMatrix,g_temp,substrate,extraArray,g_itemp,g_otemp,boxR,Ematrix, particles,potentials,reducedSum,tempDos,tempPar,tempPot,invertedDos, N,  L,slices,threads, blocks);
+//        switcharoo(c_stable,sumArray,rangeMatrix,substrate,extraArray,boxR,Ematrix, particles,potentials,tempDos,tempPar,tempPot,invertedDos, N,  L,slices,threads, blocks);
 	dosInvert ( intN,threads,blocks,invertedDos, particles,potentials,boxR, tempDos,tempPar,tempPot,Ematrix);
 
 
@@ -1864,12 +1863,15 @@ int main(int argc,char *argv[])
 	int threads,blocks;
 	int N,t,tSteps,nParticles,relax,grabJ;
 	double xi,muVar,xVar,yVar,eV,Ec,L,T,alphaOne,alphaTwo;
-
+cudaDeviceReset();
+cudaSetDevice(0);
+cudaDeviceSynchronize();
+cudaThreadSynchronize();
 
 	srand48(time(0));
 
-	N = 32;
-//	N = 100;
+//	N = 32;
+	N = 100;
 //	N = 256;
 	muVar = 0;
 //	muVar = 1e-5;
@@ -1890,14 +1892,14 @@ int main(int argc,char *argv[])
 //	L = 7e-6;	
 	L = 1e-8; //10 nm
 //	tSteps = 1000000; //for statistically accurate runs
-	tSteps = 10000; //for potential runs
-//	tSteps = 0; // for seeing the fields
-//	Steps = 0;
+//	tSteps = 10000; //for potential runs
+//	tSteps = 100; // for seeing the fields
+	tSteps = 0;
 //	relax = 1;
 	relax = 0; 
 	grabJ=0;	
 
-	REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*Ematrix,*reducedSum,*g_itemp,*g_otemp,*g_temp,*jumpRecord,*tempDos,*tempPar,*tempPot,*invertedDos,*watcher;
+	REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*Ematrix,*jumpRecord,*tempDos,*tempPar,*tempPot,*invertedDos,*watcher;
 	xi = L;
 	xVar = 0;
 	yVar = 0;
@@ -1997,11 +1999,7 @@ while( getline(is_file, line) )
 	cudaMalloc(&tempPar,N*N*sizeof(REAL));
 	cudaMalloc(&tempPot,N*N*sizeof(REAL));
         cudaMalloc(&invertedDos,N*N*sizeof(REAL));
-        cudaMalloc(&reducedSum,N*N*sizeof(REAL));
         cudaMalloc(&jumpRecord,N*N*sizeof(REAL));
-        cudaMalloc(&g_itemp,512*sizeof(REAL));
-        cudaMalloc(&g_otemp,512*sizeof(REAL));
-	cudaMalloc(&g_temp,512*sizeof(REAL));
 	cudaMalloc(&boxR,N*N*N*N*sizeof(REAL));
 	
 
@@ -2042,9 +2040,8 @@ while( getline(is_file, line) )
 	jumpFill<<<blocks,threads>>>(jumpRecord,10000);
 //system is run but results arent output for the relaxation phase
         if (relax == 1) {
-		glatzRelax(threads, blocks, L, N, potentials,substrate, particles, reducedSum,g_itemp, g_otemp,boxR,g_temp,Ematrix,tempDos,tempPar,tempPot,invertedDos,watcher);
+		glatzRelax(threads, blocks, L, N, potentials,substrate, particles, boxR,Ematrix,tempDos,tempPar,tempPot,invertedDos,watcher);
 	}
-
 	
 	
 //find the DoS
@@ -2062,11 +2059,11 @@ while( getline(is_file, line) )
 //	sprintf(str1, "line.txt");
 //	printBoxCPU(hereXDiff,N,boxName);
 	lastFlip<<<blocks,threads>>>(N,Ematrix,particles);
-	printBoxGPU(particles,N,boxName);
-	printBoxGPU(Ematrix,N,lineName);
+//	printBoxGPU(particles,N,boxName);
+	printBoxGPU(Ematrix,N,boxName);
 //        printBoxGPU(invertedDos,N,lineName);
 
-//	printLineGPU(jumpRecord,10000,lineName);
+	printLineGPU(jumpRecord,10000,lineName);
 /*
         cudaMemcpy(hereP,jumpRecord,N*N*sizeof(REAL),cudaMemcpyDeviceToHost);
         FILE    *fp1;
@@ -2092,10 +2089,6 @@ while( getline(is_file, line) )
         cudaFree(potentials);
         cudaFree(substrate);
 	cudaFree(boxR);
-	cudaFree(reducedSum);
-	cudaFree(g_itemp);
-	cudaFree(g_otemp);
-	cudaFree(g_temp);
 	cudaFree(Ematrix);
 	cudaFree(jumpRecord);
 	
