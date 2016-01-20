@@ -326,7 +326,7 @@ int n = 0;
 
 
 //figures out which way the electron jump will occur and also calculates the current or jump distance (since particle movement is also done here).
- __device__ void interaction(int x,int y,int newx,int newy,int N,REAL *particles,REAL *jumpRecord) {
+ __device__ void interaction(int grabJ,int x,int y,int newx,int newy,int N,REAL *particles,REAL *jumpRecord) {
 	double current,totalCurrent = 0;
 	int whichWay = 0;
 	REAL dx2,dy2,fillVal;
@@ -394,6 +394,10 @@ totalCurrent = totalCurrent + current;
 		dx2 = (REAL) ((x - newx) * (x - newx));
                 dy2 = (REAL) ((y - newy) * (y - newy));
 		fillVal = sqrtf(dx2 + dy2);
+	if(grabJ == 1) {
+		fillVal = current;
+	}
+
 	if((fillVal < 50)  && (particles[x + y*N] != particles[newx + newy*N])) {
 		fillRecord(jumpRecord,fillVal,10000);
 	}
@@ -461,7 +465,7 @@ void countParticles(REAL* hereP, int N) {
 
 }
 
-__global__ void particleJump(int x, int y,double randomNum,int N,REAL *reducedProb,REAL *particles,REAL *jumpRecord) {
+__global__ void particleJump(int grabJ, int x, int y,double randomNum,int N,REAL *reducedProb,REAL *particles,REAL *jumpRecord) {
 	
 	int idx = blockIdx.x*blockDim.x + threadIdx.x;
         double pickedValue = randomNum*reducedProb[N*N -1];
@@ -472,7 +476,7 @@ __global__ void particleJump(int x, int y,double randomNum,int N,REAL *reducedPr
         		lasty = idx%N;
 		        newx = G_mod(x - N/2 +  lastx,N);
 		        newy = G_mod(y - N/2 +  lasty,N);
-			interaction(x,y,newx,newy,N,particles,jumpRecord);			
+			interaction(grabJ,x,y,newx,newy,N,particles,jumpRecord);			
 //fillRecord(jumpRecord,pickedValue, 10000);
 
 		}
@@ -483,7 +487,7 @@ __global__ void particleJump(int x, int y,double randomNum,int N,REAL *reducedPr
                         lasty = idx%N;
 		        newx = G_mod(x - N/2 +  lastx,N);
 		        newy = G_mod(y - N/2 +  lasty,N);
-			interaction(x,y,newx,newy,N,particles,jumpRecord);
+			interaction(grabJ,x,y,newx,newy,N,particles,jumpRecord);
 		}	
 	}
 //	fillRecord(jumpRecord,pickedValue, 10000);
@@ -577,20 +581,20 @@ REAL *loadMatrix(REAL *hereMatrix,char* fileName) {
 
 
 //second part of the heart of this code. Here the probabilities are summed and a number is picked from 0 to that number. The code then sums through the probabilities untill it reaches that number. In this way, probabilities which are higher will have a larger chance of getting picked. 
-void particleScout(REAL *reducedProb,REAL* particles,REAL* probabilities,REAL* jumpRecord,int x,int y,int N,double randomNum,int blocks, int threads) {
+void particleScout(REAL *reducedProb,REAL* particles,REAL* probabilities,REAL* jumpRecord,int x,int y,int N,double randomNum,int blocks, int threads,int grabJ) {
         
 	thrust::device_ptr<REAL> g_go = thrust::device_pointer_cast(probabilities);
         thrust::device_ptr<REAL> g_return = thrust::device_pointer_cast(reducedProb);
 
         thrust::inclusive_scan(g_go, g_go + N*N, g_return); // in-place scan 
 		
-	particleJump<<<blocks,threads>>>( x, y,randomNum,N,reducedProb,particles,jumpRecord);
+	particleJump<<<blocks,threads>>>(grabJ, x, y,randomNum,N,reducedProb,particles,jumpRecord);
         errorAsk("particleJump");
 }
 
 
 //the particles are picked here. This is also where the system is run from. (find potential, find probabilities, and move particle are done here)
-void findJump(REAL* hereP,REAL* hereProb,REAL* herePot,REAL *particles,REAL *probabilities,REAL *potentials,REAL *substrate,REAL *reducedProb,REAL *jumpRecord,int N,double xi,int threads,int blocks,double eV,double Ec,double L,double T,REAL *boxR, double alphaOne, double alphaTwo) {
+void findJump(REAL* hereP,REAL* hereProb,REAL* herePot,REAL *particles,REAL *probabilities,REAL *potentials,REAL *substrate,REAL *reducedProb,REAL *jumpRecord,int N,double xi,int threads,int blocks,double eV,double Ec,double L,double T,REAL *boxR, double alphaOne, double alphaTwo,int grabJ) {
 	int x,y;	
 	double randomNum;
 	 x = floor(drand48()*N);
@@ -612,7 +616,7 @@ void findJump(REAL* hereP,REAL* hereProb,REAL* herePot,REAL *particles,REAL *pro
 //        printGPU(probabilities,N);	
 	
 	randomNum = drand48();
-	particleScout(reducedProb, particles,probabilities,jumpRecord, x, y, N,randomNum, blocks, threads);
+	particleScout(reducedProb, particles,probabilities,jumpRecord, x, y, N,randomNum, blocks, threads,grabJ);
 }
 
 __global__ void G_stackE(REAL *particles,REAL *stacked,int intN) {
@@ -1855,12 +1859,10 @@ __global__ void	jumpFill(REAL* jumpRecord,int N) {
 }
 
 
-
-
 int main(int argc,char *argv[])
 {
 	int threads,blocks;
-	int N,t,tSteps,nParticles,relax;
+	int N,t,tSteps,nParticles,relax,grabJ;
 	double xi,muVar,xVar,yVar,eV,Ec,L,T,alphaOne,alphaTwo;
 
 
@@ -1893,7 +1895,8 @@ int main(int argc,char *argv[])
 //	Steps = 0;
 //	relax = 1;
 	relax = 0; 
-	
+	grabJ=0;	
+
 	REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*Ematrix,*reducedSum,*g_itemp,*g_otemp,*g_temp,*jumpRecord,*tempDos,*tempPar,*tempPot,*invertedDos,*watcher;
 	xi = L;
 	xVar = 0;
@@ -1947,9 +1950,19 @@ while( getline(is_file, line) )
                 L = realVal;
         }
 
+	if(key == "eV") {
+                realVal = atof(value.c_str());
+                eV = realVal;
+        }
+
 	if(key == "relax") {
                 intVal = atoi(value.c_str());
                 relax = intVal;
+        }
+	
+	if(key == "grabJ") {
+                intVal = atoi(value.c_str());
+                grabJ = intVal;
         }
 
 	if(key == "lineName") {
@@ -2043,7 +2056,7 @@ while( getline(is_file, line) )
 
 	for(t = 0; t < tSteps ; t++) {
 		countThese = 1;
-		findJump(hereP,hereProb,herePot,particles,probabilities,potentials,substrate,reducedProb,jumpRecord, N, xi, threads, blocks,eV,Ec,L,T,boxR,alphaOne,alphaTwo);
+		findJump(hereP,hereProb,herePot,particles,probabilities,potentials,substrate,reducedProb,jumpRecord, N, xi, threads, blocks,eV,Ec,L,T,boxR,alphaOne,alphaTwo,grabJ);
 	}
 
 //	sprintf(str1, "line.txt");
