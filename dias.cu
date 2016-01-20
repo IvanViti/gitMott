@@ -207,28 +207,19 @@ bool errorAsk(const char *s="n/a")
 return 0; //in case something whacky happens
 }
 
-/*
-__device__ double findT(REAL *boxR,int N) {
-	
-	
-}
-*/
 
 //The first half of the heart of this program. Here the probabilities are calculated based on the energy change of the system and on the localization of the electron.
-__global__ void findProbabilities(REAL *TField,REAL *probabilities,REAL *particles,REAL *potentials,REAL *substrate,int x, int y, double eV,double Ec,double T,REAL *boxR,double alphaOne, double alphaTwo,int N, double xi)
+__global__ void findProbabilities(int N,double xi,REAL *probabilities,REAL *particles,REAL *potentials,REAL *substrate,int x, int y, double eV,double Ec,double T,REAL *boxR,double alphaOne, double alphaTwo)
 {
 //	REAL number = 11;
     int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
     int i,j,thisi,thisj,p,thisp,hyperIndex;
-	double potConstant,currentPart,distancePart,blockadePart,potentialPart,substratePart,volatility;
+	double potConstant,currentPart,distancePart,blockadePart,potentialPart,substratePart;
 //	double doublej, doublei,r;
 	
 //	potConstant = 1.17e-13;
 //	potConstant = Ec;
 	potConstant = 1;
-
-//	volatility = 1; //very likely to stay
-	volatility = 1;
 	
 	if(idx<N*N)
     {         
@@ -241,7 +232,7 @@ __global__ void findProbabilities(REAL *TField,REAL *probabilities,REAL *particl
 		thisj = G_mod(j + y,N);
 	
 		hyperIndex = x + N*y + N*N*(idx/N) + N*N*N*(idx%N);
-//		shadowIndex = ; //distance projection onto x (downstream current for temp)
+	
 //		doublei = i;
 //		doublej = j;
 //		r = sqrt(doublei*doublei + doublej*doublej);	
@@ -263,7 +254,7 @@ __global__ void findProbabilities(REAL *TField,REAL *probabilities,REAL *particl
 //			potentialPart= 0;
 //			substratePart= 0;
 
-			probabilities[idx] = exp(distancePart+alphaTwo*(blockadePart+potentialPart+substratePart+currentPart)/TField[x + N*y]);//use electron temp
+			
 		}
 
 		if (particles[x + N*y] < particles[thisi + N*thisj]) {
@@ -277,7 +268,7 @@ __global__ void findProbabilities(REAL *TField,REAL *probabilities,REAL *particl
 //			substratePart = 0;
 //			potentialPart = 0;
 //			blockadePart = 0;
-			probabilities[idx] = exp(distancePart+alphaTwo*(blockadePart+potentialPart+substratePart+currentPart)/TField[thisi + N*thisj]);
+
 		}
 
 		if ( particles[x + N*y] == particles[thisi + N*thisj] ){
@@ -285,7 +276,8 @@ __global__ void findProbabilities(REAL *TField,REAL *probabilities,REAL *particl
 			if (p > 0 ) {
 				currentPart  = eV*i;
 			}
-			else {
+
+			if (p == 0 ) {
                                 currentPart  = -eV*i;
                         }
 
@@ -298,24 +290,23 @@ __global__ void findProbabilities(REAL *TField,REAL *probabilities,REAL *particl
 //			substratePart = 0;
 //			potentialPart = 0;
 //			blockadePart = 0;
-			probabilities[idx] = exp(distancePart+alphaTwo*(blockadePart+potentialPart+substratePart+currentPart)/TField[x + N*y]);//idk
+
 		}
 
 
 //	probabilities[idx] = exp(distancePart+(blockadePart+potentialPart+substratePart+currentPart)/T);
-//	probabilities[idx] = exp(distancePart+alphaTwo*(blockadePart+potentialPart+substratePart+currentPart)/T);
-//	probabilities[idx] = exp(distancePart+alphaTwo*(blockadePart+potentialPart+substratePart+currentPart)/TField[idx]);
+	probabilities[idx] = exp(distancePart+alphaTwo*(blockadePart+potentialPart+substratePart+currentPart)/T);
 
 //        probabilities[idx] = exp(distancePart+(substratePart+currentPart)/T);
 //	probabilities[idx] = distancePart+(blockadePart+potentialPart+substratePart+currentPart)/T;	
 //	probabilities[idx] = potentialPart*alphaTwo;	
-		if (probabilities[idx] > 1) {
-			probabilities[idx] = 1;
-		}
+	if (probabilities[idx] > 1) {
+		probabilities[idx] = 1;
+	}
 
-		if ((thisi==x && thisj==y )  ){
-			probabilities[idx] = volatility; //force probability of jumping to self to 1 (avoids 0/0 problems)
-		}
+	if ((thisi==x && thisj==y )  ){
+		probabilities[idx] = 1; //force probability of jumping to self to 1 (avoids 0/0 problems)
+	}
 	}
 
 };
@@ -402,8 +393,7 @@ totalCurrent = totalCurrent + current;
 
 		dx2 = (REAL) ((x - newx) * (x - newx));
                 dy2 = (REAL) ((y - newy) * (y - newy));
-//		fillVal = sqrtf(dx2 + dy2);
-		fillVal = current;
+		fillVal = sqrtf(dx2 + dy2);
 	if((fillVal < 50)  && (particles[x + y*N] != particles[newx + newy*N])) {
 		fillRecord(jumpRecord,fillVal,10000);
 	}
@@ -600,7 +590,7 @@ void particleScout(REAL *reducedProb,REAL* particles,REAL* probabilities,REAL* j
 
 
 //the particles are picked here. This is also where the system is run from. (find potential, find probabilities, and move particle are done here)
-void findJump(REAL *TField,REAL* hereP,REAL* hereProb,REAL* herePot,REAL *particles,REAL *probabilities,REAL *potentials,REAL *substrate,REAL *reducedProb,REAL *jumpRecord,int N,double xi,int threads,int blocks,double eV,double Ec,double L,double T,REAL *boxR, double alphaOne, double alphaTwo) {
+void findJump(REAL* hereP,REAL* hereProb,REAL* herePot,REAL *particles,REAL *probabilities,REAL *potentials,REAL *substrate,REAL *reducedProb,REAL *jumpRecord,int N,double xi,int threads,int blocks,double eV,double Ec,double L,double T,REAL *boxR, double alphaOne, double alphaTwo) {
 	int x,y;	
 	double randomNum;
 	 x = floor(drand48()*N);
@@ -616,7 +606,7 @@ void findJump(REAL *TField,REAL* hereP,REAL* hereProb,REAL* herePot,REAL *partic
 
 	findPotential<<<blocks,threads>>>(particles,potentials, N,L,boxR);
 	errorAsk("find Potential");
-	findProbabilities<<<blocks,threads>>>(TField,probabilities,particles,potentials,substrate,x,y,eV,Ec,T,boxR,alphaOne,alphaTwo,N,xi);
+	findProbabilities<<<blocks,threads>>>(N,xi,probabilities,particles,potentials,substrate,x,y,eV,Ec,T,boxR,alphaOne,alphaTwo);
 	errorAsk("find probabilities"); //check for error
 
 //        printGPU(probabilities,N);	
@@ -1864,32 +1854,21 @@ __global__ void	jumpFill(REAL* jumpRecord,int N) {
 
 }
 
-__global__ void TGradient(REAL* TField, int N) {
-	int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
-	int i,j;
-        if (idx < N*N) {
-		i = idx/N;
-                j = idx%N;
 
-//		TField[i + N*j] = 10*i; 
-		TField[idx] = 1000;
-		
-	}
-}
 
 
 int main(int argc,char *argv[])
 {
 	int threads,blocks;
-	int N,t,tSteps,nParticles,relax,recordLength;
+	int N,t,tSteps,nParticles,relax;
 	double xi,muVar,xVar,yVar,eV,Ec,L,T,alphaOne,alphaTwo;
 
 
 	srand48(time(0));
 
-//	N = 32;
-	N = 100;
-//	N = 256; //cant handle the hypermatrix
+	N = 32;
+//	N = 100;
+//	N = 256;
 	muVar = 0;
 //	muVar = 1e-5;
 	
@@ -1909,14 +1888,13 @@ int main(int argc,char *argv[])
 //	L = 7e-6;	
 	L = 1e-8; //10 nm
 //	tSteps = 1000000; //for statistically accurate runs
-//	tSteps = 100000; //for potential runs
-	tSteps = 1000; // for seeing the fields
-//	tSteps = 0;
+	tSteps = 10000; //for potential runs
+//	tSteps = 0; // for seeing the fields
+//	Steps = 0;
 //	relax = 1;
 	relax = 0; 
-	recordLength = 10000;
 	
-	REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*Ematrix,*reducedSum,*g_itemp,*g_otemp,*g_temp,*jumpRecord,*tempDos,*tempPar,*tempPot,*invertedDos,*watcher,*TField;
+	REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*Ematrix,*reducedSum,*g_itemp,*g_otemp,*g_temp,*jumpRecord,*tempDos,*tempPar,*tempPot,*invertedDos,*watcher;
 	xi = L;
 	xVar = 0;
 	yVar = 0;
@@ -2007,8 +1985,7 @@ while( getline(is_file, line) )
 	cudaMalloc(&tempPot,N*N*sizeof(REAL));
         cudaMalloc(&invertedDos,N*N*sizeof(REAL));
         cudaMalloc(&reducedSum,N*N*sizeof(REAL));
-        cudaMalloc(&jumpRecord,recordLength*sizeof(REAL));
-	cudaMalloc(&TField,N*N*sizeof(REAL));
+        cudaMalloc(&jumpRecord,N*N*sizeof(REAL));
         cudaMalloc(&g_itemp,512*sizeof(REAL));
         cudaMalloc(&g_otemp,512*sizeof(REAL));
 	cudaMalloc(&g_temp,512*sizeof(REAL));
@@ -2049,8 +2026,7 @@ while( getline(is_file, line) )
 	cudaMemcpy(boxR,hereBoxR,N*N*N*N*sizeof(REAL),cudaMemcpyHostToDevice);
 	cudaMemcpy(particles,hereP,N*N*sizeof(REAL),cudaMemcpyHostToDevice);
 
-	jumpFill<<<blocks,threads>>>(jumpRecord,recordLength);
-	TGradient<<<blocks,threads>>>(TField, N);
+	jumpFill<<<blocks,threads>>>(jumpRecord,10000);
 //system is run but results arent output for the relaxation phase
         if (relax == 1) {
 		glatzRelax(threads, blocks, L, N, potentials,substrate, particles, reducedSum,g_itemp, g_otemp,boxR,g_temp,Ematrix,tempDos,tempPar,tempPot,invertedDos,watcher);
@@ -2067,17 +2043,17 @@ while( getline(is_file, line) )
 
 	for(t = 0; t < tSteps ; t++) {
 		countThese = 1;
-		findJump(TField,hereP,hereProb,herePot,particles,probabilities,potentials,substrate,reducedProb,jumpRecord, N, xi, threads, blocks,eV,Ec,L,T,boxR,alphaOne,alphaTwo);
+		findJump(hereP,hereProb,herePot,particles,probabilities,potentials,substrate,reducedProb,jumpRecord, N, xi, threads, blocks,eV,Ec,L,T,boxR,alphaOne,alphaTwo);
 	}
 
 //	sprintf(str1, "line.txt");
 //	printBoxCPU(hereXDiff,N,boxName);
 	lastFlip<<<blocks,threads>>>(N,Ematrix,particles);
 	printBoxGPU(particles,N,boxName);
-//	printBoxGPU(Ematrix,N,boxName);
+	printBoxGPU(Ematrix,N,lineName);
 //        printBoxGPU(invertedDos,N,lineName);
 
-	printLineGPU(jumpRecord,recordLength,lineName);
+//	printLineGPU(jumpRecord,10000,lineName);
 /*
         cudaMemcpy(hereP,jumpRecord,N*N*sizeof(REAL),cudaMemcpyDeviceToHost);
         FILE    *fp1;
