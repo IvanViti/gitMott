@@ -33,13 +33,13 @@
 // construct REAL "type," depending on desired precision
 // set the maximum number of threads
 
-//#ifdef DOUBLE
+#ifdef DOUBLE
  #define REAL double
  #define MAXT 256
-//#else
-// #define REAL float
-// #define MAXT 512
-//#endif
+#else
+ #define REAL float
+ #define MAXT 512
+#endif
 
 using namespace std;
 
@@ -194,6 +194,9 @@ bool errorAsk(const char *s="n/a")
         if ((thisp == 1) && (p == 1 )) {
                 return Ec;
         }
+	if ((thisp == -1) && (p == -1 )) {
+                return Ec;
+	}  
         if ((thisp == 1) && (p == 3 )) {
                 return 0;
         }
@@ -272,21 +275,21 @@ __global__ void findProbabilities(int N,double xi,REAL *probabilities,REAL *part
 		}
 
 		if ( particles[x + N*y] == particles[thisi + N*thisj] ){
-
+/*
 			if (p > 0 ) {
 				currentPart  = eV*i;
 			}
 
-			if (p == 0 ) {
+			else {
                                 currentPart  = -eV*i;
                         }
-
+*/
 
 			substratePart = -substrate[thisi+ N*thisj];
 			blockadePart = -1*findBlockade(p,thisp,Ec)/boxR[hyperIndex];
 			potentialPart = potConstant*(potentials[thisi + N*thisj] - potentials[x + N*y]);
 	
-//			currentPart = 0;
+			currentPart = 0;
 //			substratePart = 0;
 //			potentialPart = 0;
 //			blockadePart = 0;
@@ -294,18 +297,20 @@ __global__ void findProbabilities(int N,double xi,REAL *probabilities,REAL *part
 		}
 
 
-//	probabilities[idx] = exp(distancePart+(blockadePart+potentialPart+substratePart+currentPart)/T);
+
 	probabilities[idx] = exp(distancePart+alphaTwo*(blockadePart+potentialPart+substratePart+currentPart)/T);
 
-//        probabilities[idx] = exp(distancePart+(substratePart+currentPart)/T);
-//	probabilities[idx] = distancePart+(blockadePart+potentialPart+substratePart+currentPart)/T;	
-//	probabilities[idx] = potentialPart*alphaTwo;	
+//	probabilities[idx] =exp(distancePart + alphaTwo*(potentialPart + currentPart)/T);
+//probabilities[idx] = distancePart+alphaTwo*(blockadePart+potentialPart+substratePart+currentPart)/T;
+
+
 	if (probabilities[idx] > 1) {
 		probabilities[idx] = 1;
 	}
 
 	if ((thisi==x && thisj==y )  ){
 		probabilities[idx] = 1; //force probability of jumping to self to 1 (avoids 0/0 problems)
+//	probabilities[idx] = 0; //1 seems arbitrary
 	}
 	}
 
@@ -1885,7 +1890,7 @@ cudaThreadSynchronize();
 	alphaOne = 1; // technically combined with density of states
 //	alphaTwo = 1e7; // technically combined with e^2 and epsilon
 	alphaTwo = 1.16e4; //C/Kb
-	T = 100;
+	T = 25;
 //	nParticles = input;
 	nParticles = .5*N*N;
 //	nParticles = 1;
@@ -1893,8 +1898,8 @@ cudaThreadSynchronize();
 	L = 1e-8; //10 nm
 //	tSteps = 1000000; //for statistically accurate runs
 //	tSteps = 10000; //for potential runs
-//	tSteps = 100; // for seeing the fields
-	tSteps = 0;
+	tSteps = 1; // for seeing the fields
+//	tSteps = 0;
 //	relax = 1;
 	relax = 0; 
 	grabJ=0;	
@@ -2061,7 +2066,7 @@ while( getline(is_file, line) )
 	lastFlip<<<blocks,threads>>>(N,Ematrix,particles);
 //	printBoxGPU(particles,N,boxName);
 	printBoxGPU(Ematrix,N,boxName);
-//        printBoxGPU(invertedDos,N,lineName);
+//        printBoxGPU(particles,N,lineName);
 
 	printLineGPU(jumpRecord,10000,lineName);
 /*
