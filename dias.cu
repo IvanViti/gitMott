@@ -219,7 +219,7 @@ __global__ void findProbabilities(int N,double xi,REAL *probabilities,REAL *part
     int i,j,thisi,thisj,p,thisp,hyperIndex;
 	double potConstant,currentPart,distancePart,blockadePart,potentialPart,substratePart;
 //	double doublej, doublei,r;
-	
+	double changeToV = 3.6e-10; // Ke*Q/Kd	
 //	potConstant = 1.17e-13;
 //	potConstant = Ec;
 	potConstant = 1;
@@ -248,7 +248,7 @@ __global__ void findProbabilities(int N,double xi,REAL *probabilities,REAL *part
 		if(particles[x + N*y] > particles[thisi + N*thisj]) {
 
 			blockadePart = -1*findBlockade(p,thisp,Ec)/boxR[hyperIndex];
-			potentialPart = -potConstant*(potentials[thisi + N*thisj] - potentials[x + N*y]);
+			potentialPart = -potConstant*(potentials[thisi + N*thisj] - potentials[x + N*y] - changeToV/boxR[hyperIndex]);
 			substratePart = substrate[thisi+ N*thisj];
 			currentPart = eV*i;
 
@@ -263,7 +263,7 @@ __global__ void findProbabilities(int N,double xi,REAL *probabilities,REAL *part
 		if (particles[x + N*y] < particles[thisi + N*thisj]) {
 
 			blockadePart = -1*findBlockade(p,thisp,Ec)/boxR[hyperIndex]; 
-			potentialPart = potConstant*(potentials[thisi + N*thisj] - potentials[x + N*y]);
+			potentialPart = potConstant*(potentials[thisi + N*thisj] - potentials[x + N*y] + changeToV/boxR[hyperIndex]);
 			substratePart = -substrate[thisi + N*thisj];
 			currentPart = -eV*i;
 
