@@ -100,7 +100,7 @@ __global__ void findPotential(REAL *particles,REAL *potentials, double N,double 
 		sum = 0;
                        for(l = 0 ; l < checkRange*2; l++) {
                                 for(k = 0; k < checkRange*2; k++) {
-                                        checkx = G_mod(i + k - checkRange,N);
+                                        checkx = 		G_mod(i + k - checkRange,N);
                                         checky = G_mod(j + l - checkRange,N);
 
                                         if ((k != checkRange) || (l != checkRange)) {
@@ -911,6 +911,7 @@ REAL *createR(REAL *A,REAL *diffX, REAL *diffY,double N,double L,double xi) {
 		cout<<endl;
 	}
 */
+
 //cout<<A[26 + intN*16 + intN*intN*12 + intN*intN*intN*8]<<endl;
 
 return A;
@@ -1862,6 +1863,64 @@ __global__ void	jumpFill(REAL* jumpRecord,int N) {
 
 }
 
+__device__ REAL findMin(REAL d1, REAL d2, REAL d3, REAL d4) {
+	
+	if (d1 < d2 && d1 < d3 && d1 < d4) {
+		return d1;
+		
+	}
+        if (d2 < d1 && d2 < d3 && d2 < d4) {
+		return d2;
+		
+        }
+        if (d3 < d1 && d3 < d2 && d3 < d4) {
+		return d3;
+		
+        }
+        if (d4 < d1 && d4 < d2 && d4 < d3) {
+		return d4;
+		
+        }
+
+	return d1; //default
+}
+
+__global__ void aMaker(REAL *aMatrix,REAL *boxR,int N) {
+        int i,j,iPrev,jPrev,iPost,jPost;
+	REAL distanceUp,distanceDown,distanceLeft,distanceRight, minDistance;
+        int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+        if (idx < N*N) {
+	
+                i = idx%(N);
+                j = (idx%(N*N) - idx%(N))/N;
+		
+
+	        iPrev = G_mod(i - 1,N);
+	        jPrev = G_mod(j - 1,N);
+        	iPost = G_mod(i + 1,N);
+	        jPost = G_mod(j + 1,N);
+	
+		distanceUp = boxR[i + N*j + N*N*i + N*N*N*jPost];
+		distanceDown = boxR[i + N*j + N*N*i + N*N*N*jPrev];
+		distanceLeft = boxR[i + N*j + N*N*iPrev + N*N*N*j];
+		distanceRight = boxR[i + N*j + N*N*iPost + N*N*N*j];
+
+		minDistance = findMin(distanceUp,distanceDown,distanceLeft,distanceRight);
+		aMatrix[idx] = minDistance/2;
+
+        }
+
+}
+
+__global__ void subCombine(REAL *aMatrix,REAL *substrate,REAL L, int N) {
+
+        int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+        if (idx < N*N) {
+	substrate[idx] = substrate[idx]*aMatrix[idx]/L;
+
+	}
+
+}
 
 int main(int argc,char *argv[])
 {
@@ -1904,7 +1963,7 @@ cudaThreadSynchronize();
 	relax = 0; 
 	grabJ=0;	
 
-	REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*Ematrix,*jumpRecord,*tempDos,*tempPar,*tempPot,*invertedDos,*watcher;
+	REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*Ematrix,*jumpRecord,*tempDos,*tempPar,*tempPot,*invertedDos,*watcher,*aMatrix;
 	xi = L;
 	xVar = 0;
 	yVar = 0;
@@ -2005,6 +2064,7 @@ while( getline(is_file, line) )
 	cudaMalloc(&tempPot,N*N*sizeof(REAL));
         cudaMalloc(&invertedDos,N*N*sizeof(REAL));
         cudaMalloc(&jumpRecord,N*N*sizeof(REAL));
+	cudaMalloc(&aMatrix,N*N*sizeof(REAL));
 	cudaMalloc(&boxR,N*N*N*N*sizeof(REAL));
 	
 
@@ -2024,23 +2084,24 @@ while( getline(is_file, line) )
 	hereYDiff = createDiff(hereYDiff, yVar, N);
 
 
+
 	hereS = new REAL[N*N];
 	hereS = createSub(hereS,muVar,N);
 	hereBoxR = new REAL[N*N*N*N];
 	hereBoxR = createR(hereBoxR,hereXDiff,hereYDiff,N,L,xi);
-
+	cudaMemcpy(watcher,herePot,N*N*sizeof(REAL),cudaMemcpyHostToDevice);
+        cudaMemcpy(potentials,herePot,N*N*sizeof(REAL),cudaMemcpyHostToDevice);
+        cudaMemcpy(Ematrix,herePot,N*N*sizeof(REAL),cudaMemcpyHostToDevice);//just filling it with 0s
+        cudaMemcpy(substrate,hereS,N*N*sizeof(REAL),cudaMemcpyHostToDevice);
+        cudaMemcpy(boxR,hereBoxR,N*N*N*N*sizeof(REAL),cudaMemcpyHostToDevice);
+        cudaMemcpy(particles,hereP,N*N*sizeof(REAL),cudaMemcpyHostToDevice);
+	aMaker<<<blocks,threads>>>(aMatrix,boxR,N);
+	subCombine<<<blocks,threads>>>(aMatrix,substrate, L, N);
 /*	
 	char    nameP[256];
         sprintf(nameP, "line.txt");
 	hereP = loadMatrix(hereP,nameP);
  */       
-
-	cudaMemcpy(watcher,herePot,N*N*sizeof(REAL),cudaMemcpyHostToDevice);
-	cudaMemcpy(potentials,herePot,N*N*sizeof(REAL),cudaMemcpyHostToDevice);
-	cudaMemcpy(Ematrix,herePot,N*N*sizeof(REAL),cudaMemcpyHostToDevice);//just filling it with 0s
-	cudaMemcpy(substrate,hereS,N*N*sizeof(REAL),cudaMemcpyHostToDevice);
-	cudaMemcpy(boxR,hereBoxR,N*N*N*N*sizeof(REAL),cudaMemcpyHostToDevice);
-	cudaMemcpy(particles,hereP,N*N*sizeof(REAL),cudaMemcpyHostToDevice);
 
 	jumpFill<<<blocks,threads>>>(jumpRecord,10000);
 //system is run but results arent output for the relaxation phase
