@@ -918,6 +918,73 @@ return A;
 	
 }
 
+REAL *createHex(REAL *A,REAL *diffX, REAL *diffY,double N,double L,double xi) {
+        double r,doublel,doublek,deltaX,deltaY;
+        double diffXThere,diffYThere,diffXHere,diffYHere;
+        int i,j,k,l,intN,idx,kObs,lObs,kNew,lNew;
+
+        intN = N;
+        for (idx = 0; idx < N*N*N*N; idx++) {
+
+                i = idx%(intN);
+                j = (idx%(intN*intN) - idx%(intN))/intN;
+                k = (idx%(intN*intN*intN) - idx%(intN*intN))/(intN*intN) ;
+                l = (idx%(intN*intN*intN*intN) - idx%(intN*intN*intN))/(intN*intN*intN) ;
+
+                doublek = (double) k;
+                doublel = (double) l;
+
+                kNew = i + k - N/2;
+                lNew = j + l - N/2;
+
+                kObs = C_mod(kNew,N);
+                lObs = C_mod(lNew,N);
+
+                diffXHere = diffX[i + intN*j];
+                diffXThere = diffX[kObs + intN*lObs];
+
+                if((kNew < 0) || (kNew > N)) {
+                        diffXThere = -diffX[kObs + intN*lObs];
+                }
+                diffYHere = diffY[i + intN*j];
+                diffYThere = diffY[kObs + intN*lObs];
+
+                if((lNew < 0) || (lNew > N)) {
+                        diffYThere = -diffY[kObs + intN*lObs];
+                }
+
+                if ( (l%2)==1 ){
+                        if (doublek < N/2) {
+                                deltaX = diffXHere - (diffXThere + L*(doublek - N/2) - L/2);
+                        }
+                        else {
+                                deltaX = diffXHere - (diffXThere + L*(doublek - N/2) + L/2);
+                        }
+                }
+                else {
+                        deltaX = diffXHere - (diffXThere + L*(doublek - N/2));
+                }
+
+                deltaY = diffYHere - (diffYThere + .866*L*(doublel - N/2));
+
+                r = sqrt(deltaX*deltaX + deltaY*deltaY);
+
+                A[idx] = r;
+	}
+
+        for (i = 0; i < N; i++) {
+                for(j = 0; j < N ; j++) {
+                         cout<<A[1 + intN*1 + intN*intN*i + intN*intN*intN*j]<<" ";
+                }
+                cout<<endl;
+        }
+
+
+return A;
+
+}
+
+
 //clumps all of the original electrons ( to show relaxation)
 REAL *C_clump(double N,double nparticles,REAL *A) {
         int idx;
@@ -998,72 +1065,6 @@ return newCoord;
 
 
 
-/*
-__global__ void fastSwap(int i1, int j1, int i2, int j2,int intN,REAL *particles,REAL *boxR,REAL *Ematrix, REAL *tempDos,REAL *potentials){
-
-	int x,y;
-	int xPre,yPre;
-	double changeToV = 3.6e-10; // Ke*Q/Kd 
-	double distance1,distance2;
-	double crater,mound,newPot;
-        int idx = blockIdx.x*blockDim.x + threadIdx.x;
-
-        if(idx < intN*intN) {
-		
-		if (particles[i1 + intN*j1] != particles[i2 + intN*j2]) {
-
-
-                	xPre = idx/intN;
-	                yPre = idx%intN;
-                        x = (int) G_mod(xPre + ( intN/2 - i1),intN);
-                        y = (int) G_mod(yPre + (intN/2 - j1),intN);
-
-                        distance1 = boxR[x + intN*y + intN*intN*i1 + intN*intN*intN*j1];//might be the other way
-			if (distance1 > 0) {
-				if (particles[i1 + intN*j1] == 1) {
-					
-					crater = -changeToV/distance1;
-				}
-				else {
-					crater = changeToV/distance1;
-				}
-			}
-			else {
-				crater = 0;	
-			}
-
-                        x = (int) G_mod(xPre + ( intN/2 - i2),intN);
-                        y = (int) G_mod(yPre + (intN/2 - j2),intN);
-
-                        distance2 = boxR[x + intN*y + intN*intN*i2 + intN*intN*intN*j2];//might be the other way 
-			if (distance2 > 0) {
-                                if (particles[i2 + intN*j2] == 1) {
-                                        mound = -changeToV/distance2;
-                                }
-                                else {
-                                        mound = changeToV/distance2;
-//                                	mound = 999;
-				}
-                        }
-
-			else {
-				mound = 0;
-			}
-//			newPot = 
-//			tempDos[idx] = particles[idx]*(potentials[idx] + crater + mound);
-
-			tempDos[idx] = crater;
-		}
-		else {
-			tempDos[idx] = Ematrix[idx];
-		}
-	
-		if (particles[i1 + intN*j1] == 0){
-//			tempDos[idx] = -tempDos[idx];
-		} 	
-	}
-}
-*/
 
 __global__ void slowSwap(int i1,int j1,int i2, int j2,int intN, REAL* tempPar,REAL *tempPot,REAL *tempDos,REAL *particles,REAL *potentials,REAL *Ematrix,REAL *boxR,REAL *substrate,REAL *watcher) {
 	double distance1, distance2;
@@ -2088,7 +2089,8 @@ while( getline(is_file, line) )
 	hereS = new REAL[N*N];
 	hereS = createSub(hereS,muVar,N);
 	hereBoxR = new REAL[N*N*N*N];
-	hereBoxR = createR(hereBoxR,hereXDiff,hereYDiff,N,L,xi);
+//	hereBoxR = createR(hereBoxR,hereXDiff,hereYDiff,N,L,xi);
+	hereBoxR = createHex(hereBoxR,hereXDiff,hereYDiff,N,L,xi);	
 	cudaMemcpy(watcher,herePot,N*N*sizeof(REAL),cudaMemcpyHostToDevice);
         cudaMemcpy(potentials,herePot,N*N*sizeof(REAL),cudaMemcpyHostToDevice);
         cudaMemcpy(Ematrix,herePot,N*N*sizeof(REAL),cudaMemcpyHostToDevice);//just filling it with 0s
