@@ -331,10 +331,10 @@ int n = 0;
 
 
 //figures out which way the electron jump will occur and also calculates the current or jump distance (since particle movement is also done here).
- __device__ void interaction(int grabJ,int x,int y,int newx,int newy,int N,REAL *particles,REAL *jumpRecord) {
+ __device__ void interaction(int grabJ,int x,int y,int newx,int newy,int N,REAL *particles,REAL *jumpRecord,REAL *boxR) {
 	double current,totalCurrent = 0;
 	int whichWay = 0;
-	REAL dx2,dy2,fillVal;
+	REAL fillVal;
 //	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
 //	if(idx < 1) {
         if ((particles[x + y*N] == -1 ) && ( particles[newx + newy*N] == -1 ) ) { //do i really need this?
@@ -396,9 +396,7 @@ int n = 0;
 
 totalCurrent = totalCurrent + current;
 
-		dx2 = (REAL) ((x - newx) * (x - newx));
-                dy2 = (REAL) ((y - newy) * (y - newy));
-		fillVal = sqrtf(dx2 + dy2);
+		fillVal = boxR[x + N*y + N*N*newx + N*N*N*newy];
 	if(grabJ == 1) {
 		fillVal = current;
 	}
@@ -470,7 +468,7 @@ void countParticles(REAL* hereP, int N) {
 
 }
 
-__global__ void particleJump(int grabJ, int x, int y,double randomNum,int N,REAL *reducedProb,REAL *particles,REAL *jumpRecord) {
+__global__ void particleJump(int grabJ, int x, int y,double randomNum,int N,REAL *reducedProb,REAL *particles,REAL *jumpRecord,REAL *boxR) {
 	
 	int idx = blockIdx.x*blockDim.x + threadIdx.x;
         double pickedValue = randomNum*reducedProb[N*N -1];
@@ -481,7 +479,7 @@ __global__ void particleJump(int grabJ, int x, int y,double randomNum,int N,REAL
         		lasty = idx%N;
 		        newx = G_mod(x - N/2 +  lastx,N);
 		        newy = G_mod(y - N/2 +  lasty,N);
-			interaction(grabJ,x,y,newx,newy,N,particles,jumpRecord);			
+			interaction(grabJ,x,y,newx,newy,N,particles,jumpRecord,boxR);			
 //fillRecord(jumpRecord,pickedValue, 10000);
 
 		}
@@ -492,7 +490,7 @@ __global__ void particleJump(int grabJ, int x, int y,double randomNum,int N,REAL
                         lasty = idx%N;
 		        newx = G_mod(x - N/2 +  lastx,N);
 		        newy = G_mod(y - N/2 +  lasty,N);
-			interaction(grabJ,x,y,newx,newy,N,particles,jumpRecord);
+			interaction(grabJ,x,y,newx,newy,N,particles,jumpRecord,boxR);
 		}	
 	}
 //	fillRecord(jumpRecord,pickedValue, 10000);
@@ -583,23 +581,34 @@ REAL *loadMatrix(REAL *hereMatrix,char* fileName) {
 }
 
 
+void trackTime(double &timeRun, REAL sum) {
+	double deltaT;
+	double uPrime = drand48();	
+	deltaT = (1/sum)*log(1/uPrime); 
 
+	timeRun += deltaT;
+
+
+}
 
 //second part of the heart of this code. Here the probabilities are summed and a number is picked from 0 to that number. The code then sums through the probabilities untill it reaches that number. In this way, probabilities which are higher will have a larger chance of getting picked. 
-void particleScout(REAL *reducedProb,REAL* particles,REAL* probabilities,REAL* jumpRecord,int x,int y,int N,double randomNum,int blocks, int threads,int grabJ) {
-        
+void particleScout(REAL * boxR,REAL *reducedProb,REAL* particles,REAL* probabilities,REAL* jumpRecord,int x,int y,int N,double randomNum,int blocks, int threads,int grabJ,double &timeRun) {
+        double sum;
 	thrust::device_ptr<REAL> g_go = thrust::device_pointer_cast(probabilities);
         thrust::device_ptr<REAL> g_return = thrust::device_pointer_cast(reducedProb);
 
         thrust::inclusive_scan(g_go, g_go + N*N, g_return); // in-place scan 
-		
-	particleJump<<<blocks,threads>>>(grabJ, x, y,randomNum,N,reducedProb,particles,jumpRecord);
+	sum = thrust::reduce(g_go, g_go + N*N);	
+
+	trackTime(timeRun, sum); 
+	
+	particleJump<<<blocks,threads>>>(grabJ, x, y,randomNum,N,reducedProb,particles,jumpRecord,boxR);
         errorAsk("particleJump");
 }
 
 
 //the particles are picked here. This is also where the system is run from. (find potential, find probabilities, and move particle are done here)
-void findJump(REAL* hereP,REAL* hereProb,REAL* herePot,REAL *particles,REAL *probabilities,REAL *potentials,REAL *substrate,REAL *reducedProb,REAL *jumpRecord,int N,double xi,int threads,int blocks,double eV,double Ec,double L,double T,REAL *boxR, double alphaOne, double alphaTwo,int grabJ) {
+void findJump(REAL* hereP,REAL* hereProb,REAL* herePot,REAL *particles,REAL *probabilities,REAL *potentials,REAL *substrate,REAL *reducedProb,REAL *jumpRecord,int N,double xi,int threads,int blocks,double eV,double Ec,double L,double T,REAL *boxR, double alphaOne, double alphaTwo,int grabJ,double &timeRun) {
 	int x,y;	
 	double randomNum;
 	 x = floor(drand48()*N);
@@ -621,7 +630,7 @@ void findJump(REAL* hereP,REAL* hereProb,REAL* herePot,REAL *particles,REAL *pro
 //        printGPU(probabilities,N);	
 	
 	randomNum = drand48();
-	particleScout(reducedProb, particles,probabilities,jumpRecord, x, y, N,randomNum, blocks, threads,grabJ);
+	particleScout(boxR,reducedProb, particles,probabilities,jumpRecord, x, y, N,randomNum, blocks, threads,grabJ,timeRun);
 }
 
 __global__ void G_stackE(REAL *particles,REAL *stacked,int intN) {
@@ -971,14 +980,14 @@ REAL *createHex(REAL *A,REAL *diffX, REAL *diffY,double N,double L,double xi) {
 
                 A[idx] = r;
 	}
-
+/*
         for (i = 0; i < N; i++) {
                 for(j = 0; j < N ; j++) {
                          cout<<A[1 + intN*1 + intN*intN*i + intN*intN*intN*j]<<" ";
                 }
                 cout<<endl;
         }
-
+*/
 
 return A;
 
@@ -1927,7 +1936,7 @@ int main(int argc,char *argv[])
 {
 	int threads,blocks;
 	int N,t,tSteps,nParticles,relax,grabJ;
-	double xi,muVar,xVar,yVar,eV,Ec,L,T,alphaOne,alphaTwo;
+	double xi,muVar,xVar,yVar,eV,Ec,L,T,alphaOne,alphaTwo,timeRun;
 cudaDeviceReset();
 cudaSetDevice(0);
 cudaDeviceSynchronize();
@@ -1963,6 +1972,7 @@ cudaThreadSynchronize();
 //	relax = 1;
 	relax = 0; 
 	grabJ=0;	
+	timeRun = 0;
 
 	REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*Ematrix,*jumpRecord,*tempDos,*tempPar,*tempPot,*invertedDos,*watcher,*aMatrix;
 	xi = L;
@@ -2121,7 +2131,7 @@ while( getline(is_file, line) )
 
 	for(t = 0; t < tSteps ; t++) {
 		countThese = 1;
-		findJump(hereP,hereProb,herePot,particles,probabilities,potentials,substrate,reducedProb,jumpRecord, N, xi, threads, blocks,eV,Ec,L,T,boxR,alphaOne,alphaTwo,grabJ);
+		findJump(hereP,hereProb,herePot,particles,probabilities,potentials,substrate,reducedProb,jumpRecord, N, xi, threads, blocks,eV,Ec,L,T,boxR,alphaOne,alphaTwo,grabJ,timeRun);
 	}
 
 //	sprintf(str1, "line.txt");
@@ -2132,6 +2142,8 @@ while( getline(is_file, line) )
 //        printBoxGPU(particles,N,lineName);
 
 	printLineGPU(jumpRecord,10000,lineName);
+
+	cout<<timeRun<<endl;
 /*
         cudaMemcpy(hereP,jumpRecord,N*N*sizeof(REAL),cudaMemcpyDeviceToHost);
         FILE    *fp1;
