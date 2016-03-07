@@ -556,6 +556,14 @@ void printLineGPU(REAL *g_array,int size,char * lineName) {
 	delete[] c_array;
 }
 
+void printSingle(double &timeRun,char *timeName){
+	FILE    *fp1;
+	fp1 = fopen(timeName, "w");
+	fprintf(fp1, "%lf ",timeRun);
+	fclose(fp1);
+}
+
+
 REAL *loadMatrix(REAL *hereMatrix,char* fileName) {
 //      infile.open (fileName, ifstream::in);
 //      REAL * buffer;
@@ -1983,9 +1991,10 @@ cudaThreadSynchronize();
 //       char *boxName;
 	char boxName[256];
 	char lineName[256];
+	char timeName[256];
 	sprintf(lineName, "line.txt");
 	sprintf(boxName, "box.txt");
-
+	sprintf(timeName,"time.txt");
 
 int intVal;
 REAL realVal;
@@ -2052,6 +2061,10 @@ while( getline(is_file, line) )
                  sprintf(boxName,  value.c_str());
 //                boxName = value.c_str();
         }
+        if(key == "timeName") {
+                 sprintf(timeName,  value.c_str());
+        }
+
 
   }
 }
@@ -2142,8 +2155,9 @@ while( getline(is_file, line) )
 //        printBoxGPU(particles,N,lineName);
 
 	printLineGPU(jumpRecord,10000,lineName);
+	
+	printSingle(timeRun,timeName);
 
-	cout<<timeRun<<endl;
 /*
         cudaMemcpy(hereP,jumpRecord,N*N*sizeof(REAL),cudaMemcpyDeviceToHost);
         FILE    *fp1;
