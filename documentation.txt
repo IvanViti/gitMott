@@ -1,0 +1,18 @@
+﻿Dias Documentation:
+
+
+Program only requires 2 files to run (dias.cu and dias.h).  
+
+compiled using:
+nvcc dias.cu -o dias.o
+
+run using:
+./dias.o input.txt
+
+where input.txt is the input parameter file. Can be empty. All input parameters have a default, the important ones can be changed via input file. These are: Temp (temperature), muVar (substrate variance, XYvar (position variance),  tSteps (timesteps), L (average grid spacing), eV (applied electric voltage in x direction, relax (whether or not to relax the system), grabJ (grab current or average jump distance), lineName (name of 1D file , contains either current or average jump distance), boxName (name of 2D file, typically contains DoS), timeName ( name of file which contains how long the experiment took in simulation time )
+
+  
+
+
+JumpMatrix initialized with 999's since one doesnt know how many jumps there will be. Extra 999s can be removed during post processing. 
+
