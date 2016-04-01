@@ -47,6 +47,7 @@ using namespace std;
 
 int currentCount = 0;
 int countThese = 1;
+int tIndex = 0;
 
 typedef struct {
 	REAL re;
@@ -312,17 +313,18 @@ __global__ void findProbabilities(REAL *probabilities,REAL *particles,REAL *pote
 	}
 
 	if ((thisi==x && thisj==y )  ){
-		probabilities[idx] = 1; //force probability of jumping to self to 1 (avoids 0/0 problems)
-//	probabilities[idx] = 0; //1 seems arbitrary
+//		probabilities[idx] = 1; //force probability of jumping to self to 1 (avoids 0/0 problems)
+		probabilities[idx] = 0; //rejection free monte carlo algorithm 
 	}
 	}
 
 };
+
 __device__ void fillRecord(REAL *jumpRecord,REAL fillVal,int N) {
-int found = 0;
-int n = 0;
+	int found = 0;
+	int n = 0;
 	while ((found == 0) && (n < N)) {
-		if( jumpRecord[n] == 999) {
+		if(jumpRecord[n] == 999) {
 			found = 1;
 			jumpRecord[n] = fillVal; 
 			
@@ -344,6 +346,7 @@ int n = 0;
 //	if(idx < 1) {
         if ((particles[x + y*N] == -1 ) && ( particles[newx + newy*N] == -1 ) ) { //do i really need this?
 //               current = 0;
+		whichWay=0;
         }
 
         else if (particles[x + y*N] > particles[newx + newy*N] ) {
@@ -385,7 +388,7 @@ int n = 0;
                 }
 */
 
-		whichWay = 1;
+		whichWay = 0;
 		
 
 	}
@@ -406,11 +409,8 @@ int n = 0;
 	if(p.grabJ == 1) {
 		
 		dx = (REAL) (x - newx); 	
-		if (particles[x + y*N] ==1){
-			fillVal = dx;
-		}
-		else {
-			fillVal = -dx;
+		if (dx < 50){
+			fillVal = -whichWay*dx;
 		}
 //	fillVal = current;
 	}
@@ -513,6 +513,18 @@ __global__ void particleJump(parameters p, int x, int y,double randomNum,REAL *r
 
 }
 
+void printLineCPU(REAL * c_line, char *fileName) {
+	int k;
+	FILE *fp1;
+	fp1 = fopen(fileName, "w");
+	for (k = 0; k < tIndex; k++) {
+		
+		fprintf(fp1, "%lf ", c_line[k]);
+	}
+	fclose(fp1);
+
+}
+
 //print the CPU matrix to a file
 void printBoxCPU(REAL *c_array,int size, char * fileName) {
         int k,l;
@@ -569,13 +581,16 @@ void printLineGPU(REAL *g_array,int size,char * name) {
         fclose(fp1);
 	delete[] c_array;
 }
+
+/*
 //print a single number to a file
-void printSingle(double timeRun,char *fileName){
+void printSingle(double nimeRun,char *fileName){
 	FILE    *fp1;
 	fp1 = fopen(fileName, "w");
 	fprintf(fp1, "%lf ",timeRun);
 	fclose(fp1);
 }
+*/
 
 //loading previous results
 REAL *loadMatrix(REAL *hereMatrix,char* fileName) {
@@ -603,14 +618,13 @@ REAL *loadMatrix(REAL *hereMatrix,char* fileName) {
 }
 
 //tracking time
-void trackTime(parameters p, REAL sum) {
+void trackTime(REAL *timeRun, REAL sum) {
 	double deltaT;
-	double uPrime = drand48();	
-	deltaT = (1/sum)*log(1/uPrime); 
-
-	p.timeRun += deltaT;
-
-
+	deltaT = (1/sum); 
+	if (tIndex < 10000) { //prevent bad bad memory writing
+		timeRun[tIndex] = deltaT;
+		tIndex++;
+	}
 }
 
 //second part of the heart of this code. Here the probabilities are summed and a number is picked from 0 to that number. The code then sums through the probabilities untill it reaches that number. In this way, probabilities which are higher will have a larger chance of getting picked. 
@@ -622,7 +636,7 @@ void particleScout(vectors &v,int x,int y, double randomNum,int blocks, int thre
         thrust::inclusive_scan(g_go, g_go + p.N*p.N, g_return); // in-place scan 
 	sum = thrust::reduce(g_go, g_go + p.N*p.N);	
 
-	trackTime(p, sum); 
+	trackTime(v.timeRun, sum); 
 	
 	particleJump<<<blocks,threads>>>(p, x, y,randomNum,v.reducedProb,v.particles,v.jumpRecord,v.boxR);
         errorAsk("particleJump");
@@ -1945,7 +1959,6 @@ void paramLoad(parameters &p, char *argv[]){
 //      relax = 1;
         p.relax = 0; //wether or not to relax the system before running (should be 0 iff muVar & xyVar = 0)
         p.grabJ=0; //0 grabs average jumping distance , 1 grabs current
-        p.timeRun = 0; //initialize real-time
         p.xi = p.L; //tunneling factor
         p.xVar = 0; //variance of lattice site in x direction
         p.yVar = 0; // typically = xVar
@@ -2040,7 +2053,7 @@ void vectorLoad(vectors &v,parameters p,int blocks, int threads){
         cudaMalloc(&v.aMatrix,N*N*sizeof(REAL));
         cudaMalloc(&v.boxR,N*N*N*N*sizeof(REAL));
 
-
+	v.timeRun = new REAL[10000];
         v.herePot =  new REAL[N*N];
         v.herePot = C_zeros(N, v.herePot);
         v.hereProb = new REAL[N*N];
@@ -2138,10 +2151,10 @@ int main(int argc,char *argv[])
 //	printBoxGPU(particles,N,boxName);
 	printBoxGPU(v.Ematrix,p.N,p.boxName);
 //        printBoxGPU(probabilities,p.N,p.boxName);
-
+	printLineCPU(v.timeRun, p.timeName);
 	printLineGPU(v.jumpRecord,10000,p.lineName);
 	
-	printSingle(p.timeRun,p.timeName);
+	
 
 /*
         cudaMemcpy(hereP,jumpRecord,N*N*sizeof(REAL),cudaMemcpyDeviceToHost);

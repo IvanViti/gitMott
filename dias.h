@@ -16,7 +16,7 @@ using namespace std;
 
 class parameters {
 public:
-        double xi,muVar,xVar,yVar,eV,Ec,L,T,alphaOne,alphaTwo,timeRun;
+        double xi,muVar,xVar,yVar,eV,Ec,L,T,alphaOne,alphaTwo;
         int N,tSteps,nParticles,relax,grabJ;
 
 
@@ -29,7 +29,7 @@ public:
 
 class vectors {
 public:
-        REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*Ematrix,*jumpRecord,*tempDos,*tempPar,*tempPot,*invertedDos,*watcher,*aMatrix;
+        REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*Ematrix,*jumpRecord,*tempDos,*tempPar,*tempPot,*invertedDos,*watcher,*aMatrix,*timeRun;
         REAL *rangeMatrix,*extraArray,*sumArray,*hereSum;
 	REAL results[5];
 };
