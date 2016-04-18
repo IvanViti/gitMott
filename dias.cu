@@ -91,36 +91,29 @@ __global__ void matrixCopy(int intN, REAL * matrixIn,REAL *matrixOut){
 
 //Here, the gpu's find the general electric potential at each lattice site. 
 __global__ void findPotential(REAL *particles,REAL *potentials,  REAL *boxR,parameters p) { 
-        int i,j,intx,inty,checkx,checky,distancex,distancey;
+        int i,j,checkx,checky;
 	int intN = (int) p.N;
-        int checkRange = p.N/2; //(*2)
-	        double changeToV = 3.6e-10; // Ke*Q/Kd 
-  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+	int halfRange = p.N/2;//gets forced to (N-1)/2 since odd
+	double changeToV = 3.6e-10; // Ke*Q/Kd 
 
-        double k,l,sum,distanceTerm;
-//	double deltax,deltay;
+	int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+        double sum,distanceTerm;
+	int k,l;
 	 if(idx<intN*intN) {
         	i = idx/intN;
                 j = idx%intN;
 		sum = 0;
-                       for(l = 0 ; l < checkRange*2; l++) {
-                                for(k = 0; k < checkRange*2; k++) {
-                                        checkx = G_mod(i + k - checkRange,p.N);
-                                        checky = G_mod(j + l - checkRange,p.N);
+                       for(l = 0 ; l < p.N; l++) {
+                                for(k = 0; k < p.N; k++) {
+                                        checkx = G_mod(i - halfRange + k,p.N);
+                                        checky = G_mod(j - halfRange + l,p.N);
 
-                                        if ((k != checkRange) || (l != checkRange)) {
-						distancex = (int) k;
-						distancey = (int) l;
-  						distanceTerm = boxR[i + intN*j + intN*intN*distancex + intN*intN*intN*distancey];				
-	                                        intx = (int) checkx;
-                                                inty = (int) checky;
-						if ((intx != i) || (inty != j)) {
-                                                	sum = sum +  particles[(intx) + intN*(inty)]/distanceTerm;
-						}
+                                        if ((k != halfRange) || (l != halfRange)) { //dont do self-potential
+  						distanceTerm = boxR[i + intN*j + intN*intN*k + intN*intN*intN*l];				
+                                               	sum = sum +  particles[(checkx) + intN*(checky)]/distanceTerm;
                                         }
                                 }
                         }
-//		potentials[i + intN*j] = -sum*changeToV;
                 potentials[i + intN*j] = sum*changeToV;
 
 	}
@@ -303,9 +296,7 @@ __global__ void findProbabilities(REAL *probabilities,REAL *particles,REAL *pote
 
 
 	probabilities[idx] = exp(distancePart+p.alphaTwo*(blockadePart+potentialPart+substratePart+currentPart)/p.T);
-
-//	probabilities[idx] =exp(distancePart + alphaTwo*(potentialPart + currentPart)/T);
-//probabilities[idx] = distancePart+alphaTwo*(blockadePart+potentialPart+substratePart+currentPart)/T;
+//	probabilities[idx] = exp(distancePart + p.alphaTwo*(potentialPart)/p.T);
 
 
 	if (probabilities[idx] > 1) {
@@ -395,14 +386,14 @@ __device__ void fillRecord(REAL *jumpRecord,REAL fillVal,int N) {
 
 
 	if (whichWay > 0){
-		particles[x + y*N] = particles[x + y*N] - 2;
-                particles[newx + newy*N] = particles[newx + newy*N] + 2;
+//		particles[x + y*N] = particles[x + y*N] - 2;
+//                particles[newx + newy*N] = particles[newx + newy*N] + 2;
 		
 	}
 
 	else if (whichWay < 0) {
-	        particles[x + y*N] = particles[x + y*N] + 2;
-                particles[newx + newy*N] = particles[newx + newy*N] - 2;
+//	        particles[x + y*N] = particles[x + y*N] + 2;
+//                particles[newx + newy*N] = particles[newx + newy*N] - 2;
 	}
 
 		fillVal = boxR[x + N*y + N*N*newx + N*N*N*newy]/p.L;
@@ -1833,11 +1824,6 @@ for (int t = 0; t < 1; t++) {
 	}
 }
 
-
-
-
-
-
 //highs to lows
 	switcharoo(v,c_stable,threads, blocks,p);
 	errorAsk("switching highs to lows");
@@ -1932,14 +1918,14 @@ void paramLoad(parameters &p, char *argv[]){
         sprintf(p.boxName, "box.txt");
         sprintf(p.timeName,"time.txt");
 //      N = 32;
-        p.N = 100;  //size of system (N x N)
+        p.N = 99;  //size of system (N x N)
 //      N = 256;
         p.muVar = 0; // randomness of substrate (site energy?) -muvar to muvar
 //      muVar = 1e-5;
 
 //      eV = .05;
         p.eV = 0; //voltage (arbitrary units for now)
-        p.Ec = 16000; //penalty for double-stacking
+        p.Ec = 1600; //penalty for double-stacking
 //      Ec = 1.6e-5;
 //      Ec = 1;
 //      T = 1;
@@ -2049,7 +2035,7 @@ void vectorLoad(vectors &v,parameters p,int blocks, int threads){
         cudaMalloc(&v.tempPar,N*N*sizeof(REAL));
         cudaMalloc(&v.tempPot,N*N*sizeof(REAL));
         cudaMalloc(&v.invertedDos,N*N*sizeof(REAL));
-        cudaMalloc(&v.jumpRecord,N*N*sizeof(REAL));
+        cudaMalloc(&v.jumpRecord,10000*sizeof(REAL));
         cudaMalloc(&v.aMatrix,N*N*sizeof(REAL));
         cudaMalloc(&v.boxR,N*N*N*N*sizeof(REAL));
 
@@ -2149,8 +2135,8 @@ int main(int argc,char *argv[])
 //	printBoxCPU(hereXDiff,N,boxName);
 	lastFlip<<<blocks,threads>>>(p.N,v.Ematrix,v.particles);
 //	printBoxGPU(particles,N,boxName);
-	printBoxGPU(v.Ematrix,p.N,p.boxName);
-//        printBoxGPU(probabilities,p.N,p.boxName);
+//	printBoxGPU(v.Ematrix,p.N,p.boxName);
+        printBoxGPU(v.potentials,p.N,p.boxName);
 	printLineCPU(v.timeRun, p.timeName);
 	printLineGPU(v.jumpRecord,10000,p.lineName);
 	
