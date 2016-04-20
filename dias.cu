@@ -400,9 +400,9 @@ __device__ void fillRecord(REAL *jumpRecord,REAL fillVal,int N) {
 	if(p.grabJ == 1) {
 		
 		dx = (REAL) (x - newx); 	
-		if (dx < 50){
-			fillVal = -whichWay*dx;
-		}
+                if ((dx < p.N/2) && (dx > -p.N/2)){
+                        fillVal = -whichWay*dx;
+                }
 //	fillVal = current;
 	}
 
