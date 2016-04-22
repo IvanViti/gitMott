@@ -16,7 +16,7 @@ using namespace std;
 
 class parameters {
 public:
-        double xi,muVar,xVar,yVar,eV,Ec,L,T,alphaOne,alphaTwo;
+        double xi,muVar,xVar,yVar,eV,Ec,L,T,alphaOne,alphaTwo,rejection;
         int N,tSteps,nParticles,relax,grabJ;
 
 

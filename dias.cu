@@ -305,7 +305,8 @@ __global__ void findProbabilities(REAL *probabilities,REAL *particles,REAL *pote
 
 	if ((thisi==x && thisj==y )  ){
 //		probabilities[idx] = 1; //force probability of jumping to self to 1 (avoids 0/0 problems)
-		probabilities[idx] = 0; //rejection free monte carlo algorithm 
+//		probabilities[idx] = 0; //rejection free monte carlo algorithm 
+		probabilities[idx] = p.rejection;
 	}
 	}
 
@@ -635,19 +636,17 @@ void particleScout(vectors &v,int x,int y, double randomNum,int blocks, int thre
 
 
 //the particles are picked here. This is also where the system is run from. (find potential, find probabilities, and move particle are done here)
-void findJump(vectors &v,int threads,int blocks,parameters p) {
+void findJump(vectors &v,int threads,int blocks,parameters p,int t) {
 	int x,y;	
 	double randomNum;
-	 x = floor(drand48()*p.N);
-         y = floor(drand48()*p.N);
-//      Displays:
 
-//        showMove(hereP,N);
-//      showMove(hereProb,N);
-//      showMove(herePot,N);
-//      sumEnergy(herePot,N);
-//      countParticles(hereP,N);
-//      line 300 for the jump distance display
+
+        x = t%p.N;
+        y = t/p.N;
+
+
+//	x = floor(drand48()*p.N);
+//	y = floor(drand48()*p.N);
 
 	findPotential<<<blocks,threads>>>(v.particles,v.potentials,v.boxR, p);
 	errorAsk("find Potential");
@@ -1918,7 +1917,7 @@ void paramLoad(parameters &p, char *argv[]){
         sprintf(p.boxName, "box.txt");
         sprintf(p.timeName,"time.txt");
 //      N = 32;
-        p.N = 99;  //size of system (N x N)
+        p.N = 100;  //size of system (N x N)
 //      N = 256;
         p.muVar = 0; // randomness of substrate (site energy?) -muvar to muvar
 //      muVar = 1e-5;
@@ -1948,7 +1947,7 @@ void paramLoad(parameters &p, char *argv[]){
         p.xi = p.L; //tunneling factor
         p.xVar = 0; //variance of lattice site in x direction
         p.yVar = 0; // typically = xVar
-
+	p.rejection = 0; //default no rejection
 
 	int intVal;
 	REAL realVal;
@@ -2016,7 +2015,13 @@ void paramLoad(parameters &p, char *argv[]){
 			        if(key == "timeName") {
 			                 sprintf(p.timeName,  value.c_str());
 			        }
-					
+				
+                                if(key == "rejection") {
+                                        realVal = atof(value.c_str());
+                                        p.rejection = realVal;
+                                }
+
+	
 			}
 		}
 }
@@ -2126,7 +2131,7 @@ int main(int argc,char *argv[])
 //run simulation
 	for(int t = 0; t < p.tSteps ; t++) {
 		countThese = 1;
-		findJump(v, threads, blocks,p);
+		findJump(v, threads, blocks,p,t);
 	}
 
 
