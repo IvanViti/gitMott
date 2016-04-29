@@ -327,90 +327,44 @@ __device__ void fillRecord(REAL *jumpRecord,REAL fillVal,int N) {
 
 
 
-//figures out which way the electron jump will occur and also calculates the current or jump distance (since particle movement is also done here).
- __device__ void interaction(parameters p,int x,int y,int newx,int newy,REAL *particles,REAL *jumpRecord,REAL *boxR) {
+//figures out which way the electron jump will occur and also calculates the current or jump distance
+ __global__ void interaction(parameters p,int x,int y,int newx,int newy,REAL *particles,REAL *jumpRecord,REAL *boxR) {
 	int N = p.N;
-//	double current;
 	int whichWay = 0;
 	REAL fillVal;
 	REAL dx;
-//	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
-//	if(idx < 1) {
-        if ((particles[x + y*N] == -1 ) && ( particles[newx + newy*N] == -1 ) ) { //do i really need this?
-//               current = 0;
+        if ((particles[x + y*N] == -1 ) && ( particles[newx + newy*N] == -1 ) ) { //currently useless as T << T_stack
 		whichWay=0;
         }
 
         else if (particles[x + y*N] > particles[newx + newy*N] ) {
-/*
-                if( (x  > N/2 && x < 3*N/4) && (newx <= N/2)  ) {
-                        current = 1;
-                }
-
-                if( (x < N/2 )&& (newx >= N/2 && newx < 3*N/4  )) {
-                        current = -1;
-                }
-*/
 		whichWay = 1;
         }
 
         else if (particles[x + y*N] < particles[newx + newy*N]) {
-/*
-                if( (x  > N/2 && x < 3*N/4) && (newx <= N/2)  ) {
-                        current = -1;
-                }
-
-                if( (x < N/2) && (newx >= N/2 && newx < 3*N/4)  ) {
-                        current = 1;
-                }
-*/
 		whichWay = -1;
-
         }
 
 
 	else if ((particles[x + y*N] == 1) && (particles[newx + newy*N] == 1)) {
-/*  
-              if( (x  > N/2 && x < 3*N/4) && (newx <= N/2)  ) {
-                        current = 1;
-                }
-
-                if( (x < N/2 )&& (newx >= N/2 && newx < 3*N/4  )) {
-                        current = -1;
-                }
-*/
-
 		whichWay = 0;
-		
-
 	}
 
 
-	if (whichWay > 0){
-//		particles[x + y*N] = particles[x + y*N] - 2;
-//                particles[newx + newy*N] = particles[newx + newy*N] + 2;
-		
-	}
-
-	else if (whichWay < 0) {
-//	        particles[x + y*N] = particles[x + y*N] + 2;
-//                particles[newx + newy*N] = particles[newx + newy*N] - 2;
-	}
-
-		fillVal = boxR[x + N*y + N*N*newx + N*N*N*newy]/p.L;
+	fillVal = boxR[x + N*y + N*N*newx + N*N*N*newy]/p.L;
 	if(p.grabJ == 1) {
 		
 		dx = (REAL) (x - newx); 	
                 if ((dx < p.N/2) && (dx > -p.N/2)){
                         fillVal = -whichWay*dx;
                 }
-//	fillVal = current;
 	}
-
-	if((fillVal < 50)  && (particles[x + y*N] != particles[newx + newy*N])) {
-		fillRecord(jumpRecord,fillVal,10000);
+        int idx = blockIdx.x*blockDim.x + threadIdx.x;
+	if (idx < 1) {
+		if((fillVal < 50)  && (particles[x + y*N] != particles[newx + newy*N])) {
+			fillRecord(jumpRecord,fillVal,10000);
+		}
 	}
-//}
 }
 
 //this section does the various outputs such as particle positions or general electric potential
@@ -422,10 +376,8 @@ void showJump(int N,int x,int y,int newx,int newy,REAL* hereP) {
 
 	r = sqrt(deltax*deltax + deltay*deltay);
 	
-//	cout<<x<<" "<<y<<" "<<newx<<" "<<newy<<endl;
 	
 	cout<<r<<endl;
-//	cout<<hereP[x + N*y]<<" "<<hereP[newx + N*newy]<<endl;
 
 
 }
@@ -475,33 +427,21 @@ void countParticles(REAL* hereP, int N) {
 }
 
 //finalizes the monte carlo algorithm by picking a site at random (weighted)
-__global__ void particleJump(parameters p, int x, int y,double randomNum,REAL *reducedProb,REAL *particles,REAL *jumpRecord,REAL *boxR) {
+__global__ void weightedWheel(parameters p, double randomNum,REAL *reducedProb, int *picked) {
 	int N = p.N;	
 	int idx = blockIdx.x*blockDim.x + threadIdx.x;
         double pickedValue = randomNum*reducedProb[N*N -1];
-	int newx,newy,lastx,lasty;
+
 	if ((idx > 0) && (idx < N*N)) {
 		if ((reducedProb[idx - 1] < pickedValue) && (reducedProb[idx] > pickedValue)) {
-			lastx = idx/N;
-        		lasty = idx%N;
-		        newx = G_mod(x - N/2 +  lastx,N);
-		        newy = G_mod(y - N/2 +  lasty,N);
-			interaction(p,x,y,newx,newy,particles,jumpRecord,boxR);			
-//fillRecord(jumpRecord,pickedValue, 10000);
-
+			picked[0] = idx;
 		}
 	}
 	if (idx == 0) {
 		if (pickedValue < reducedProb[0]) {
-	                lastx = idx/N;
-                        lasty = idx%N;
-		        newx = G_mod(x - N/2 +  lastx,N);
-		        newy = G_mod(y - N/2 +  lasty,N);
-			interaction(p,x,y,newx,newy,particles,jumpRecord,boxR);
+			picked[0] =idx;
 		}	
 	}
-//	fillRecord(jumpRecord,pickedValue, 10000);
-	
 
 }
 
@@ -535,7 +475,7 @@ void printBoxCPU(REAL *c_array,int size, char * fileName) {
         fclose(fp1);
 }
 
-//print the GPU matrix to a file
+//print the gpu matrix to a file
 void printBoxGPU(REAL *g_array,int size,char * fileName) {
         REAL *c_array;
         c_array =  new REAL[size*size];
@@ -556,7 +496,25 @@ void printBoxGPU(REAL *g_array,int size,char * fileName) {
         fclose(fp1);
 	delete[] c_array;
 }
-//print GPU array to a file
+void printIntGPU(int *g_array,int size,char * name) {//can probably overload using C++11
+        int *c_array;
+        c_array =  new int[size];
+        int k;
+        cudaMemcpy(c_array,g_array,size*sizeof(int),cudaMemcpyDeviceToHost);
+        FILE    *fp1;
+        fp1 = fopen(name, "w");
+        for (k = 0; k < size ; k++){
+
+                        fprintf(fp1, "%i ",c_array[k]);
+                        fprintf(fp1,"\n");
+        }
+//cleanup
+        fclose(fp1);
+        delete[] c_array;
+}
+
+
+//print gpu array to a file
 void printLineGPU(REAL *g_array,int size,char * name) {
         REAL *c_array;
         c_array =  new REAL[size];
@@ -596,7 +554,6 @@ REAL *loadMatrix(REAL *hereMatrix,char* fileName) {
         while (getline(infile, line)) {
                 istringstream iss(line);
                 if (iss >> d) {
-//                      cout<<d<<endl;
                         hereMatrix[counter] = d;
 
                         counter++;
@@ -622,6 +579,7 @@ void trackTime(REAL *timeRun, REAL sum) {
 //second part of the heart of this code. Here the probabilities are summed and a number is picked from 0 to that number. The code then sums through the probabilities untill it reaches that number. In this way, probabilities which are higher will have a larger chance of getting picked. 
 void particleScout(vectors &v,int x,int y, double randomNum,int blocks, int threads,parameters p) {
         double sum;
+	int lastx,lasty,newx,newy;
 	thrust::device_ptr<REAL> g_go = thrust::device_pointer_cast(v.probabilities);
         thrust::device_ptr<REAL> g_return = thrust::device_pointer_cast(v.reducedProb);
 
@@ -630,30 +588,63 @@ void particleScout(vectors &v,int x,int y, double randomNum,int blocks, int thre
 
 	trackTime(v.timeRun, sum); 
 	
-	particleJump<<<blocks,threads>>>(p, x, y,randomNum,v.reducedProb,v.particles,v.jumpRecord,v.boxR);
-        errorAsk("particleJump");
+	weightedWheel<<<blocks,threads>>>(p, randomNum,v.reducedProb, v.picked);
+	cudaMemcpy(v.herePicked,v.picked,sizeof(int),cudaMemcpyDeviceToHost);	
+//cout<<v.herePicked[0]<<endl;	
+        lastx = v.herePicked[0]/p.N;
+        lasty = v.herePicked[0]%p.N;
+        newx = C_mod(x - p.N/2 +  lastx,p.N);
+        newy = C_mod(y - p.N/2 +  lasty,p.N);
+	
+	interaction<<<blocks,threads>>>(p,x,y,newx,newy,v.particles,v.jumpRecord,v.boxR);
+
+        potSwap<<<blocks,threads>>>( x, y,newx,newy,p.N,v.particles,v.boxR,v.potentials);
+        particleSwap<<<blocks,threads>>>(x, y, newx,newy,p.N,v.particles);
+        findE<<<blocks,threads>>>(p.N, v.Ematrix,v.particles,v.potentials,v.substrate);
+
+	errorAsk("particleJump");
+}
+
+__global__ void Eflip(int intN,double T, double boltzmann, REAL *tempDos,REAL *Ematrix) {
+
+         int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+         if(idx<intN*intN) {
+                tempDos[idx] = exp(-Ematrix[idx]/(boltzmann*T));
+        }
+
+}
+
+
+
+void findFirst(parameters p,int blocks,int threads,vectors &v) {
+	double randomNum;
+	Eflip<<<blocks,threads>>>(p.N, p.T, p.boltzmann, v.tempDos,v.Ematrix);
+	errorAsk("Eflip"); //check for error
+	
+
+	thrust::device_ptr<REAL> g_go = thrust::device_pointer_cast(v.tempDos);//tempDos memory being recycled
+        thrust::device_ptr<REAL> g_return = thrust::device_pointer_cast(v.reducedProb);// also reduced prob memory
+        thrust::inclusive_scan(g_go, g_go + p.N*p.N, g_return); // in-place scan 
+
+        randomNum = drand48();//place where the wheel lands
+        weightedWheel<<<blocks,threads>>>(p, randomNum,v.reducedProb, v.picked);
+        cudaMemcpy(v.herePicked,v.picked,sizeof(int),cudaMemcpyDeviceToHost);
 }
 
 
 //the particles are picked here. This is also where the system is run from. (find potential, find probabilities, and move particle are done here)
-void findJump(vectors &v,int threads,int blocks,parameters p,int t) {
+void findJump(vectors &v,int threads,int blocks,parameters p) {
 	int x,y;	
 	double randomNum;
 
+	findFirst( p, blocks,threads,v);//find the first particle according to exp(-beta)        
+	
 
-        x = t%p.N;
-        y = t/p.N;
-
-
-//	x = floor(drand48()*p.N);
-//	y = floor(drand48()*p.N);
-
-	findPotential<<<blocks,threads>>>(v.particles,v.potentials,v.boxR, p);
-	errorAsk("find Potential");
+	x = v.herePicked[0]%p.N;
+        y = v.herePicked[0]/p.N;
 	findProbabilities<<<blocks,threads>>>(v.probabilities,v.particles,v.potentials,v.substrate,v.boxR,x,y,p);
 	errorAsk("find probabilities"); //check for error
 
-//        printGPU(probabilities,N);	
 	
 	randomNum = drand48();
 	particleScout(v, x, y, randomNum, blocks, threads,p);
@@ -706,7 +697,7 @@ __global__ void particleSwitch(int i,int j,int intN,REAL *particles) {
 	}
 }
 
-//fill dos (GPU) matrix with sums (CPU)
+//fill dos (gpu) matrix with sums (CPU)
 __global__ void dosPut(int i,int j,int intN,REAL *Ematrix,REAL sum) {
 	Ematrix[i + j*intN] =	sum;
 }
@@ -720,7 +711,6 @@ __global__ void dosPut(int i,int j,int intN,REAL *Ematrix,REAL sum) {
 	thrust::device_ptr<REAL> sumArrayPtr = thrust::device_pointer_cast(sumArray);
 	thrust::device_ptr<REAL> extraArrayPtr = thrust::device_pointer_cast(extraArray);
 	REAL result;
-//printBoxGPU(particles,N,"pBox.txt");
 
         for (j = 0; j < intN; j++) {
                 for (i = 0; i < intN; i++) {
@@ -1388,6 +1378,8 @@ __global__ void findE(int intN, REAL *Ematrix, REAL *particles, REAL *potentials
          int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
          if(idx<intN*intN) {
 			Ematrix[idx] = particles[idx]*potentials[idx] + particles[idx]*substrate[idx];
+//			Ematrix[idx] = particles[idx]*potentials[idx];
+//			Ematrix[idx] =particles[idx]*substrate[idx];			
 	}
 
 
@@ -1476,13 +1468,6 @@ void C_particleForce(vectors &v,int intN, int i1, int j1,int i2,int j2,int threa
 }
 //pick which site would result in a decrease of system energy
 void C_particlePick(vectors &v,int intN, int i, int j,int threads, int blocks) {
-/*
-//printBoxGPU(particles,intN,"pBox.txt");
-cout<<i<<" "<<j<<" "<<endl;
-for (int q = 0; q < 5; q++) {
-      cout<<results[q]<<endl;
-}
-*/
         if ((v.results[0] < v.results[1] ) ||(v.results[0] < v.results[2] ) ||(v.results[0] < v.results[3] ) ||(v.results[0] < v.results[4] ) ) {
         
 	int iPrev,jPrev,iPost,jPost;
@@ -1497,7 +1482,6 @@ for (int q = 0; q < 5; q++) {
 			particleSwap<<<blocks,threads>>>(i, j, iPrev,j,intN,v.particles);
 			findE<<<blocks,threads>>>(intN, v.Ematrix,v.particles,v.potentials,v.substrate);
 
-//cout<<iPrev<<" "<<j<<endl;
 		}
 
                 else if ((v.results[2] > v.results[3] ) &&(v.results[2] > v.results[4] )) {
@@ -1505,7 +1489,6 @@ for (int q = 0; q < 5; q++) {
 			particleSwap<<<blocks,threads>>>(i, j, i,jPrev,intN,v.particles);
 			findE<<<blocks,threads>>>(intN, v.Ematrix,v.particles,v.potentials,v.substrate);
 
-//cout<<i<<" "<<jPrev<<endl;
 		}
 
                 else if (v.results[3] > v.results[4]) {
@@ -1513,7 +1496,6 @@ for (int q = 0; q < 5; q++) {
 			particleSwap<<<blocks,threads>>>(i, j, iPost,j,intN,v.particles);
 			findE<<<blocks,threads>>>(intN, v.Ematrix,v.particles,v.potentials,v.substrate);
 
-//cout<<iPost<<" "<<j<<endl;
 		}
 
                 else {
@@ -1521,7 +1503,6 @@ for (int q = 0; q < 5; q++) {
                		particleSwap<<<blocks,threads>>>(i, j, i,jPost,intN,v.particles);
 			findE<<<blocks,threads>>>(intN, v.Ematrix,v.particles,v.potentials,v.substrate);
 
-//cout<<i<<" "<<jPost<<endl;
 		 }
         }
 }
@@ -1662,7 +1643,6 @@ int checkStable(vectors &v,int c_stable,REAL min_value,REAL max_value,int min_of
                 j2 = max_offset/intN;		
 
 
-//cout<<i1<<" "<<j1<<" "<<i2<<" "<<j2<<endl;
 
                 potSwap<<<blocks,threads>>>(i1, j1, i2, j2,intN,v.particles,v.boxR,v.potentials);
 		particleSwap<<<blocks,threads>>>(i1, j1, i2,j2,intN,v.particles);
@@ -1739,13 +1719,10 @@ void dosInvert (int intN,int threads,int blocks,vectors &v) {//should work for n
 
 			dosPut<<<blocks,threads>>>( i, j,intN,v.invertedDos, result2 - result1);
 			
-//printBoxGPU(tempPot,intN,"dBox.txt");
-//printBoxGPU(tempPar,intN,"pBox.txt");
 				
 		}
 	}
 //lastFlip<<<blocks,threads>>>(intN,invertedDos,tempPar);
-//printBoxGPU(tempPar,intN,"pBox.txt");
 
 
 }
@@ -1765,16 +1742,13 @@ void switcharoo(vectors &v,int c_stable,int threads, int blocks,parameters p) {
 
 		min_offset = thrust::min_element(inverted_ptr, inverted_ptr + intN*intN) - inverted_ptr;
 		min_value = *(inverted_ptr + min_offset);
-//cout<<min_value<<endl;
 	
 		grabPositives<<<blocks,threads>>>(v.particles,v.extraArray,v.Ematrix,intN,-1);		
 
               max_offset = thrust::min_element(inverted_ptr, inverted_ptr + intN*intN) - inverted_ptr; //grabbing the smallest positive number
               max_value = *(inverted_ptr + max_offset);
-//cout<<max_value<<endl;
 //		max_offset = thrust::max_element(inverted_ptr, inverted_ptr + intN*intN) - inverted_ptr;
 //		max_value = *(inverted_ptr + max_offset);
-//cout<<max_value<<endl;
 
 //	potentialse = *(g_ptr + max_offset);
 	
@@ -1817,7 +1791,6 @@ for (int t = 0; t < 1; t++) {
 //original pair exchange
 	for(j = 0; j < N; j++) {
 	       	for(i = 0; i < N; i++) {
-//			cout<<i<<" "<<j<<endl;
 			fastTest(v, i, j,  intN, threads, blocks);
 		}
 	}
@@ -1921,7 +1894,8 @@ void paramLoad(parameters &p, char *argv[]){
 //      N = 256;
         p.muVar = 0; // randomness of substrate (site energy?) -muvar to muvar
 //      muVar = 1e-5;
-
+//	p.boltzmann = 1.38e-23;
+	p.boltzmann = 1;
 //      eV = .05;
         p.eV = 0; //voltage (arbitrary units for now)
         p.Ec = 1600; //penalty for double-stacking
@@ -2043,7 +2017,10 @@ void vectorLoad(vectors &v,parameters p,int blocks, int threads){
         cudaMalloc(&v.jumpRecord,10000*sizeof(REAL));
         cudaMalloc(&v.aMatrix,N*N*sizeof(REAL));
         cudaMalloc(&v.boxR,N*N*N*N*sizeof(REAL));
+	cudaMalloc(&v.picked,sizeof(int));	
 
+	v.herePicked = new int[0];
+	v.herePicked[0] = 0;
 	v.timeRun = new REAL[10000];
         v.herePot =  new REAL[N*N];
         v.herePot = C_zeros(N, v.herePot);
@@ -2059,6 +2036,7 @@ void vectorLoad(vectors &v,parameters p,int blocks, int threads){
         v.hereYDiff = new REAL[N*N];
         v.hereXDiff = createDiff(v.hereXDiff, p.xVar, N);
         v.hereYDiff = createDiff(v.hereYDiff, p.yVar, N);
+
         v.hereS = new REAL[N*N];
         v.hereS = createSub(v.hereS,p.muVar,N);
         v.hereBoxR = new REAL[N*N*N*N];
@@ -2071,8 +2049,8 @@ void vectorLoad(vectors &v,parameters p,int blocks, int threads){
         cudaMemcpy(v.substrate,v.hereS,N*N*sizeof(REAL),cudaMemcpyHostToDevice);
         cudaMemcpy(v.boxR,v.hereBoxR,N*N*N*N*sizeof(REAL),cudaMemcpyHostToDevice);
         cudaMemcpy(v.particles,v.hereP,N*N*sizeof(REAL),cudaMemcpyHostToDevice);
-        aMaker<<<blocks,threads>>>(v.aMatrix,v.boxR,N);
-        subCombine<<<blocks,threads>>>(v.aMatrix,v.substrate, p.L, N);
+//        aMaker<<<blocks,threads>>>(v.aMatrix,v.boxR,N);
+//        subCombine<<<blocks,threads>>>(v.aMatrix,v.substrate, p.L, N);
         jumpFill<<<blocks,threads>>>(v.jumpRecord,10000);
 
         int sizeSum = 6;
@@ -2097,7 +2075,7 @@ int main(int argc,char *argv[])
 	cudaThreadSynchronize();
 
 	parameters p;
-	srand48(time(0));
+//	srand48(time(0));
 
 	vectors v;	
 
@@ -2131,7 +2109,7 @@ int main(int argc,char *argv[])
 //run simulation
 	for(int t = 0; t < p.tSteps ; t++) {
 		countThese = 1;
-		findJump(v, threads, blocks,p,t);
+		findJump(v, threads, blocks,p);
 	}
 
 
@@ -2140,8 +2118,8 @@ int main(int argc,char *argv[])
 //	printBoxCPU(hereXDiff,N,boxName);
 	lastFlip<<<blocks,threads>>>(p.N,v.Ematrix,v.particles);
 //	printBoxGPU(particles,N,boxName);
-//	printBoxGPU(v.Ematrix,p.N,p.boxName);
-        printBoxGPU(v.potentials,p.N,p.boxName);
+	printBoxGPU(v.probabilities,p.N,p.boxName);
+//        printBoxGPU(v.potentials,p.N,p.boxName);
 	printLineCPU(v.timeRun, p.timeName);
 	printLineGPU(v.jumpRecord,10000,p.lineName);
 	
@@ -2161,7 +2139,7 @@ int main(int argc,char *argv[])
 
 
 */
-	
+	delete[] v.herePicked;	
         delete[] v.herePot;
         delete[] v.hereProb;
         delete[] v.hereP;
@@ -2174,10 +2152,9 @@ int main(int argc,char *argv[])
 	cudaFree(v.boxR);
 	cudaFree(v.Ematrix);
 	cudaFree(v.jumpRecord);
-	
+	cudaFree(v.picked);
 	clock_t end = clock();
 //  	double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
 
-//cout<<currentCount<<endl;
 //cout<<"this took "<<elapsed_secs<<" seconds"<<endl;
 }

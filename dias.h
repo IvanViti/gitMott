@@ -16,9 +16,9 @@ using namespace std;
 
 class parameters {
 public:
-        double xi,muVar,xVar,yVar,eV,Ec,L,T,alphaOne,alphaTwo,rejection;
+        double xi,muVar,xVar,yVar,eV,Ec,L,T,alphaOne,alphaTwo,rejection,boltzmann;
         int N,tSteps,nParticles,relax,grabJ;
-
+	
 
         char boxName[256];
         char lineName[256];
@@ -32,6 +32,11 @@ public:
         REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*Ematrix,*jumpRecord,*tempDos,*tempPar,*tempPot,*invertedDos,*watcher,*aMatrix,*timeRun;
         REAL *rangeMatrix,*extraArray,*sumArray,*hereSum;
 	REAL results[5];
+	int *picked;
+	int *herePicked;//wtf cuda
 };
 
+__global__ void potSwap(int i1, int j1, int i2, int j2,int intN,REAL *particles,REAL *boxR,REAL *potentials);
+__global__ void particleSwap(int i,int j,int k,int l,int intN,REAL *particles);
+__global__ void findE(int intN, REAL *Ematrix, REAL *particles, REAL *potentials, REAL *substrate);
 
