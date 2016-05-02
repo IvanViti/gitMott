@@ -218,7 +218,7 @@ __global__ void findProbabilities(REAL *probabilities,REAL *particles,REAL *pote
 	double changeToV = 3.6e-10; // Ke*Q/Kd	
 //	potConstant = 1.17e-13;
 //	potConstant = Ec;
-	potConstant = 1;
+	potConstant = -1;
 	N = p.N;
 
 	if(idx<N*N)
@@ -296,11 +296,11 @@ __global__ void findProbabilities(REAL *probabilities,REAL *particles,REAL *pote
 
 
 	probabilities[idx] = exp(distancePart+p.alphaTwo*(blockadePart+potentialPart+substratePart+currentPart)/p.T);
-//	probabilities[idx] = exp(distancePart + p.alphaTwo*(potentialPart)/p.T);
+//	probabilities[idx] = distancePart+p.alphaTwo*(blockadePart+potentialPart+substratePart+currentPart)/p.T;
 
 
 	if (probabilities[idx] > 1) {
-		probabilities[idx] = 1;
+//		probabilities[idx] = 1;
 	}
 
 	if ((thisi==x && thisj==y )  ){
@@ -333,6 +333,10 @@ __device__ void fillRecord(REAL *jumpRecord,REAL fillVal,int N) {
 	int whichWay = 0;
 	REAL fillVal;
 	REAL dx;
+
+        int idx = blockIdx.x*blockDim.x + threadIdx.x;
+        if (idx < 1) {
+
         if ((particles[x + y*N] == -1 ) && ( particles[newx + newy*N] == -1 ) ) { //currently useless as T << T_stack
 		whichWay=0;
         }
@@ -351,7 +355,11 @@ __device__ void fillRecord(REAL *jumpRecord,REAL fillVal,int N) {
 	}
 
 
+	newx = (int) G_mod(newx + ( p.N/2 - x),p.N);
+        newy = (int) G_mod(newy + ( p.N/2 - y),p.N);
+
 	fillVal = boxR[x + N*y + N*N*newx + N*N*N*newy]/p.L;
+//        fillVal = boxR[newx + N*newy + N*N*x + N*N*N*y]/p.L;
 	if(p.grabJ == 1) {
 		
 		dx = (REAL) (x - newx); 	
@@ -359,11 +367,10 @@ __device__ void fillRecord(REAL *jumpRecord,REAL fillVal,int N) {
                         fillVal = -whichWay*dx;
                 }
 	}
-        int idx = blockIdx.x*blockDim.x + threadIdx.x;
-	if (idx < 1) {
-		if((fillVal < 50)  && (particles[x + y*N] != particles[newx + newy*N])) {
-			fillRecord(jumpRecord,fillVal,10000);
-		}
+//	if(particles[x + y*N] != particles[newx + newy*N]) {//not necessary for rejection = 0
+			fillRecord(jumpRecord,fillVal,p.recordLength);
+//	}
+	
 	}
 }
 
@@ -567,10 +574,10 @@ REAL *loadMatrix(REAL *hereMatrix,char* fileName) {
 }
 
 //tracking time
-void trackTime(REAL *timeRun, REAL sum) {
+void trackTime(REAL *timeRun, REAL sum,int recordLength) {
 	double deltaT;
 	deltaT = (1/sum); 
-	if (tIndex < 10000) { //prevent bad bad memory writing
+	if (tIndex < recordLength) { //prevent bad bad memory writing
 		timeRun[tIndex] = deltaT;
 		tIndex++;
 	}
@@ -586,7 +593,7 @@ void particleScout(vectors &v,int x,int y, double randomNum,int blocks, int thre
         thrust::inclusive_scan(g_go, g_go + p.N*p.N, g_return); // in-place scan 
 	sum = thrust::reduce(g_go, g_go + p.N*p.N);	
 
-	trackTime(v.timeRun, sum); 
+	trackTime(v.timeRun, sum,p.recordLength); 
 	
 	weightedWheel<<<blocks,threads>>>(p, randomNum,v.reducedProb, v.picked);
 	cudaMemcpy(v.herePicked,v.picked,sizeof(int),cudaMemcpyDeviceToHost);	
@@ -929,7 +936,6 @@ REAL *createR(REAL *A,REAL *diffX, REAL *diffY,double N,double L,double xi) {
 
 		deltaX = diffXHere - (diffXThere + L*(doublek - N/2));
 		deltaY = diffYHere - (diffYThere + L*(doublel - N/2));
-		
 		r = sqrt(deltaX*deltaX + deltaY*deltaY);
 
 		A[idx] = r;
@@ -939,13 +945,13 @@ REAL *createR(REAL *A,REAL *diffX, REAL *diffY,double N,double L,double xi) {
 /*
 	for (i = 0; i < N; i++) {
 		for(j = 0; j < N ; j++) {
-			 cout<<A[1 + intN*1 + intN*intN*i + intN*intN*intN*j]<<" ";
+			 cout<<A[1 + intN*1 + intN*intN*i + intN*intN*intN*j]/L<<" ";
 		}
 		cout<<endl;
 	}
 */
 
-//cout<<A[26 + intN*16 + intN*intN*12 + intN*intN*intN*8]<<endl;
+//cout<<A[1 + intN*2 + intN*intN*1 + intN*intN*intN*1]/L<<endl;
 
 return A;
 	
@@ -1767,24 +1773,20 @@ void switcharoo(vectors &v,int c_stable,int threads, int blocks,parameters p) {
 //2 step relaxation algorithm developed by Glatz
 void glatzRelax(int threads,int blocks,parameters p, vectors v) {
 
-//        int sizeShared = 512*sizeof(REAL)/blocks;
 	int i,j,intN;
 	intN = p.N;
 	int N = p.N;
 	int c_stable = 0;
 	
-//	G_dos(sumArray,extraArray,boxR,particles,substrate,Ematrix,potentials, slices, threads,blocks,p) ;
-
+/*
 	for(j = 0; j < intN; j++) {
 		for(i = 0; i < intN; i++) {
 			potAdd<<<blocks,threads>>>( i, j,  intN, v.particles, v.potentials, v.boxR);
 
 		}
 	}
-//	subAdd<<<blocks,threads>>>(intN,particles,potentials,substrate);
-	
 	findE<<<blocks,threads>>>(intN, v.Ematrix,v.particles,v.potentials,v.substrate); 
-
+*/
 
 
 for (int t = 0; t < 1; t++) {		
@@ -1895,7 +1897,7 @@ void paramLoad(parameters &p, char *argv[]){
         p.muVar = 0; // randomness of substrate (site energy?) -muvar to muvar
 //      muVar = 1e-5;
 //	p.boltzmann = 1.38e-23;
-	p.boltzmann = 1;
+	p.boltzmann = .01;
 //      eV = .05;
         p.eV = 0; //voltage (arbitrary units for now)
         p.Ec = 1600; //penalty for double-stacking
@@ -1903,8 +1905,8 @@ void paramLoad(parameters &p, char *argv[]){
 //      Ec = 1;
 //      T = 1;
         p.alphaOne = 1; // technically combined with density of states (not used at the moment)
-//      alphaTwo = 1e7; // technically combined with e^2 and epsilon
-        p.alphaTwo = 1.16e4; //C/Kb (for converting to unitless)
+	p.alphaTwo = 1e1; // test
+//        p.alphaTwo = 1.16e4; //C/Kb (for converting to unitless)
         p.T = 25; //temperature
 //      nParticles = input;
         p.nParticles = .5*p.N*p.N; //number of particles
@@ -1998,6 +2000,8 @@ void paramLoad(parameters &p, char *argv[]){
 	
 			}
 		}
+
+	p.recordLength = p.tSteps;
 }
 
 //load arrays
@@ -2014,20 +2018,20 @@ void vectorLoad(vectors &v,parameters p,int blocks, int threads){
         cudaMalloc(&v.tempPar,N*N*sizeof(REAL));
         cudaMalloc(&v.tempPot,N*N*sizeof(REAL));
         cudaMalloc(&v.invertedDos,N*N*sizeof(REAL));
-        cudaMalloc(&v.jumpRecord,10000*sizeof(REAL));
+        cudaMalloc(&v.jumpRecord,p.recordLength*sizeof(REAL));
         cudaMalloc(&v.aMatrix,N*N*sizeof(REAL));
         cudaMalloc(&v.boxR,N*N*N*N*sizeof(REAL));
 	cudaMalloc(&v.picked,sizeof(int));	
 
 	v.herePicked = new int[0];
 	v.herePicked[0] = 0;
-	v.timeRun = new REAL[10000];
+	v.timeRun = new REAL[p.recordLength];
         v.herePot =  new REAL[N*N];
         v.herePot = C_zeros(N, v.herePot);
         v.hereProb = new REAL[N*N];
         v.hereProb = C_random(N,0,v.hereProb);
         v.hereP = new REAL[N*N];
-//      hereP = C_clump(N,nParticles,hereP);//test relaxation
+//	v.hereP = C_clump(p.N,p.nParticles,v.hereP);//test relaxation
         v.hereP = C_spread(N,p.nParticles,v.hereP); //test general potential
 //      hereP = C_random(N,nParticles,hereP);   
 //      hereP = C_random(N,0,hereP); //empty system
@@ -2051,7 +2055,7 @@ void vectorLoad(vectors &v,parameters p,int blocks, int threads){
         cudaMemcpy(v.particles,v.hereP,N*N*sizeof(REAL),cudaMemcpyHostToDevice);
 //        aMaker<<<blocks,threads>>>(v.aMatrix,v.boxR,N);
 //        subCombine<<<blocks,threads>>>(v.aMatrix,v.substrate, p.L, N);
-        jumpFill<<<blocks,threads>>>(v.jumpRecord,10000);
+        jumpFill<<<blocks,threads>>>(v.jumpRecord,p.recordLength);
 
         int sizeSum = 6;
 
@@ -2062,6 +2066,15 @@ void vectorLoad(vectors &v,parameters p,int blocks, int threads){
         cudaMalloc(&v.rangeMatrix,N*N*sizeof(REAL));
         cudaMalloc(&v.sumArray,sizeSum*sizeof(REAL));
         cudaMemcpy(v.sumArray,v.hereSum,sizeSum*sizeof(REAL),cudaMemcpyHostToDevice);
+
+	int i,j;
+        for(j = 0; j < p.N; j++) {
+                for(i = 0; i < p.N; i++) {
+                        potAdd<<<blocks,threads>>>( i, j,  p.N, v.particles, v.potentials, v.boxR);
+
+                }
+        }
+        findE<<<blocks,threads>>>(p.N, v.Ematrix,v.particles,v.potentials,v.substrate); 
 
 		
 }
@@ -2075,9 +2088,9 @@ int main(int argc,char *argv[])
 	cudaThreadSynchronize();
 
 	parameters p;
-//	srand48(time(0));
+        vectors v;
 
-	vectors v;	
+//	srand48(time(0));
 
 	clock_t begin = clock();
 
@@ -2099,12 +2112,6 @@ int main(int argc,char *argv[])
 		glatzRelax(threads, blocks,p,v );
 	}
 	
-	
-//find the DoS
-
-//      Ematrix = dosFind(hereP, hereS,herePot,Ematrix, particles,potentials,boxR, N, L, threads, blocks);  
-//	showMove(hereXDiff,N);  
-
 
 //run simulation
 	for(int t = 0; t < p.tSteps ; t++) {
@@ -2117,11 +2124,11 @@ int main(int argc,char *argv[])
 //	sprintf(str1, "line.txt");
 //	printBoxCPU(hereXDiff,N,boxName);
 	lastFlip<<<blocks,threads>>>(p.N,v.Ematrix,v.particles);
-//	printBoxGPU(particles,N,boxName);
-	printBoxGPU(v.probabilities,p.N,p.boxName);
-//        printBoxGPU(v.potentials,p.N,p.boxName);
+	printBoxGPU(v.particles,p.N,p.boxName);
+//	printBoxGPU(v.probabilities,p.N,p.boxName);
+//	printBoxGPU(v.potentials,p.N,p.boxName);
 	printLineCPU(v.timeRun, p.timeName);
-	printLineGPU(v.jumpRecord,10000,p.lineName);
+	printLineGPU(v.jumpRecord,p.recordLength,p.lineName);
 	
 	
 

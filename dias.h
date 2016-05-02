@@ -17,7 +17,7 @@ using namespace std;
 class parameters {
 public:
         double xi,muVar,xVar,yVar,eV,Ec,L,T,alphaOne,alphaTwo,rejection,boltzmann;
-        int N,tSteps,nParticles,relax,grabJ;
+        int N,tSteps,nParticles,relax,grabJ,recordLength;
 	
 
         char boxName[256];
