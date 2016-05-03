@@ -300,7 +300,7 @@ __global__ void findProbabilities(REAL *probabilities,REAL *particles,REAL *pote
 
 
 	if (probabilities[idx] > 1) {
-//		probabilities[idx] = 1;
+		probabilities[idx] = 1;
 	}
 
 	if ((thisi==x && thisj==y )  ){
@@ -1905,8 +1905,8 @@ void paramLoad(parameters &p, char *argv[]){
 //      Ec = 1;
 //      T = 1;
         p.alphaOne = 1; // technically combined with density of states (not used at the moment)
-	p.alphaTwo = 1e1; // test
-//        p.alphaTwo = 1.16e4; //C/Kb (for converting to unitless)
+//	p.alphaTwo = 1; // test
+        p.alphaTwo = 1.16e4; //C/Kb (for converting to unitless)
         p.T = 25; //temperature
 //      nParticles = input;
         p.nParticles = .5*p.N*p.N; //number of particles
@@ -2090,7 +2090,7 @@ int main(int argc,char *argv[])
 	parameters p;
         vectors v;
 
-//	srand48(time(0));
+	srand48(time(0));
 
 	clock_t begin = clock();
 
@@ -2161,7 +2161,7 @@ int main(int argc,char *argv[])
 	cudaFree(v.jumpRecord);
 	cudaFree(v.picked);
 	clock_t end = clock();
-//  	double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
+  	double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
 
-//cout<<"this took "<<elapsed_secs<<" seconds"<<endl;
+cout<<"this took "<<elapsed_secs<<" seconds"<<endl;
 }
