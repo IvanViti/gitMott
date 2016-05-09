@@ -329,7 +329,7 @@ __device__ void fillRecord(REAL *jumpRecord,REAL fillVal,int N) {
 
 //figures out which way the electron jump will occur and also calculates the current or jump distance
  __global__ void interaction(parameters p,int x,int y,int newx,int newy,REAL *particles,REAL *jumpRecord,REAL *boxR) {
-	int N = p.N;
+	int N = p.N,obsx,obsy;
 	int whichWay = 0;
 	REAL fillVal;
 	REAL dx;
@@ -355,21 +355,36 @@ __device__ void fillRecord(REAL *jumpRecord,REAL fillVal,int N) {
 	}
 
 
-	newx = (int) G_mod(newx + ( p.N/2 - x),p.N);
-        newy = (int) G_mod(newy + ( p.N/2 - y),p.N);
+        obsx = (int) G_mod(newx + ( p.N/2 - x),p.N);
+        obsy = (int) G_mod(newy + ( p.N/2 - y),p.N);
 
-	fillVal = boxR[x + N*y + N*N*newx + N*N*N*newy]/p.L;
-//        fillVal = boxR[newx + N*newy + N*N*x + N*N*N*y]/p.L;
+
 	if(p.grabJ == 1) {
 		
 		dx = (REAL) (x - newx); 	
-                if ((dx < p.N/2) && (dx > -p.N/2)){
-                        fillVal = -whichWay*dx;
-                }
+//		if ((dx < p.N/2) && (dx > -p.N/2)){
+                      fillVal = -whichWay*(obsx-p.N/2);
+//			fillVal	= -whichWay*dx/(x-newx);		
+//			fillVal = x-newx;
+
+/*
+fillVal = -dx;
+fillRecord(jumpRecord,fillVal,p.recordLength);
+fillVal = obsx - p.N/2 ;
+fillRecord(jumpRecord,fillVal,p.recordLength);
+*/
+
+//                }
+
 	}
-//	if(particles[x + y*N] != particles[newx + newy*N]) {//not necessary for rejection = 0
+
+
+	if(p.grabJ == 0) {
+		fillVal = boxR[x + N*y + N*N*obsx + N*N*N*obsy]/p.L;
+	}
+
+
 			fillRecord(jumpRecord,fillVal,p.recordLength);
-//	}
 	
 	}
 }
