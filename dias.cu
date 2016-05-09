@@ -332,7 +332,6 @@ __device__ void fillRecord(REAL *jumpRecord,REAL fillVal,int N) {
 	int N = p.N,obsx,obsy;
 	int whichWay = 0;
 	REAL fillVal;
-	REAL dx;
 
         int idx = blockIdx.x*blockDim.x + threadIdx.x;
         if (idx < 1) {
@@ -361,10 +360,7 @@ __device__ void fillRecord(REAL *jumpRecord,REAL fillVal,int N) {
 
 	if(p.grabJ == 1) {
 		
-		dx = (REAL) (x - newx); 	
-//		if ((dx < p.N/2) && (dx > -p.N/2)){
                       fillVal = -whichWay*(obsx-p.N/2);
-//			fillVal	= -whichWay*dx/(x-newx);		
 //			fillVal = x-newx;
 
 /*
@@ -1643,38 +1639,46 @@ __global__ void checkRange(int index,REAL *rangeMatrix,int intN) {
 	}
 
 }
+
+int updateMinMax(vectors &v, int c_stable, REAL min_value, REAL max_value) {
+
+	if(v.min1 == min_value && v.max1 == max_value) {
+		c_stable = 1;	
+	}
+
+	if(v.min2 == min_value && v.max2 == max_value) {
+		c_stable = 1;
+	}
+	
+
+	v.min2 = v.min1;
+	v.min1 = min_value;
+	v.max2 = v.max1;
+	v.max1 = max_value;	
+
+return c_stable;
+}
+
+
 //see if the system has reached a local minimum
 int checkStable(vectors &v,int c_stable,REAL min_value,REAL max_value,int min_offset,int max_offset,int intN,int blocks,int threads){
 	int i1,i2,j1,j2;
-//	  int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
-
-//	if(idx < 1) {	
-//	if (min_value > max_value ) {
-        if (min_value + max_value < 0) {
 	
-/*
-		i1 = min_offset/intN;
-		j1 = min_offset%intN;
-		i2 = max_offset/intN;
-		j2 = max_offset%intN;	
- */
+	c_stable = updateMinMax(v, c_stable, min_value,max_value); 
+
+        if (c_stable == 0) {
+	
                 i1 = min_offset%intN;
                 j1 = min_offset/intN;
                 i2 = max_offset%intN;
                 j2 = max_offset/intN;		
 
-
-
                 potSwap<<<blocks,threads>>>(i1, j1, i2, j2,intN,v.particles,v.boxR,v.potentials);
 		particleSwap<<<blocks,threads>>>(i1, j1, i2,j2,intN,v.particles);
 		findE<<<blocks,threads>>>(intN, v.Ematrix,v.particles,v.potentials,v.substrate);
-
-	
-		c_stable = 0;
 		
 	}
-	else c_stable = 1;
-//	}
+	
 	return c_stable;
 }
 
@@ -1750,7 +1754,6 @@ void dosInvert (int intN,int threads,int blocks,vectors &v) {//should work for n
 
 //do the half of the Glatz algorithm which uses a density of states map to find which particle switching is optimal
 void switcharoo(vectors &v,int c_stable,int threads, int blocks,parameters p) {
-	int counter = 0;
 	int intN = p.N;
 	int min_offset,max_offset;
 	REAL min_value,max_value;
@@ -1772,15 +1775,10 @@ void switcharoo(vectors &v,int c_stable,int threads, int blocks,parameters p) {
 //		max_value = *(inverted_ptr + max_offset);
 
 //	potentialse = *(g_ptr + max_offset);
+cout<<min_value<<" "<<max_value<<endl;
+
 	
 		c_stable = highsToLows(v, max_offset,min_offset, max_value,min_value,c_stable, blocks,threads,p);
-                if (counter >= 200) {
-                        c_stable = 1;
-                }
-                else {
-                        counter++;
-                }
-
 	}
 	
 }
@@ -2072,6 +2070,11 @@ void vectorLoad(vectors &v,parameters p,int blocks, int threads){
 //        subCombine<<<blocks,threads>>>(v.aMatrix,v.substrate, p.L, N);
         jumpFill<<<blocks,threads>>>(v.jumpRecord,p.recordLength);
 
+	v.min1 = 999;
+	v.min2 = 999;
+	v.max1 = 999;
+	v.max2 = 999;
+
         int sizeSum = 6;
 
         v.hereSum = new REAL[sizeSum];
@@ -2142,6 +2145,7 @@ int main(int argc,char *argv[])
 	printBoxGPU(v.particles,p.N,p.boxName);
 //	printBoxGPU(v.probabilities,p.N,p.boxName);
 //	printBoxGPU(v.potentials,p.N,p.boxName);
+//	printBoxGPU(v.Ematrix,p.N,p.boxName);
 	printLineCPU(v.timeRun, p.timeName);
 	printLineGPU(v.jumpRecord,p.recordLength,p.lineName);
 	

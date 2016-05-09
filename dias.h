@@ -34,6 +34,7 @@ public:
 	REAL results[5];
 	int *picked;
 	int *herePicked;//wtf cuda
+	REAL min1,min2,max1,max2;
 };
 
 __global__ void potSwap(int i1, int j1, int i2, int j2,int intN,REAL *particles,REAL *boxR,REAL *potentials);
