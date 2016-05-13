@@ -94,7 +94,7 @@ __global__ void findPotential(REAL *particles,REAL *potentials,  REAL *boxR,para
         int i,j,checkx,checky;
 	int intN = (int) p.N;
 	int halfRange = p.N/2;//gets forced to (N-1)/2 since odd
-	double changeToV = 3.6e-10; // Ke*Q/Kd 
+	 
 
 	int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
         double sum,distanceTerm;
@@ -114,18 +114,17 @@ __global__ void findPotential(REAL *particles,REAL *potentials,  REAL *boxR,para
                                         }
                                 }
                         }
-                potentials[i + intN*j] = sum*changeToV;
+                potentials[i + intN*j] = sum*p.changeToV;
 
 	}
 }
 
 //finding the potential at each particle
-__global__ void potOnParticles(REAL *particles,REAL *potentials,int intN, double L,REAL *boxR) {
+__global__ void potOnParticles(REAL *particles,REAL *potentials,int intN, double L,REAL *boxR,parameters p) {
         int i,j,intx,inty,checkx,checky,distancex,distancey;
         double N = (double) intN;
         int checkRange = N/2; //(*2)
   int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
-	        double changeToV = 3.6e-10; // Ke*Q/Kd 
         double k,l,sum,distanceTerm;
 //      double deltax,deltay;
          if(idx<intN*intN) {
@@ -152,7 +151,7 @@ __global__ void potOnParticles(REAL *particles,REAL *potentials,int intN, double
                                 }
                         }
 		}
-                potentials[i + intN*j] = changeToV*sum*particles[i + intN*j];
+                potentials[i + intN*j] = p.changeToV*sum*particles[i + intN*j];
 //		potentials[i + intN*j] = particles[i + intN*j];
         }
 
@@ -215,7 +214,6 @@ __global__ void findProbabilities(REAL *probabilities,REAL *particles,REAL *pote
     int i,j,thisi,thisj,thatp,thisp,hyperIndex,N;
 	double potConstant,currentPart,distancePart,blockadePart,potentialPart,substratePart;
 //	double doublej, doublei,r;
-	double changeToV = 3.6e-10; // Ke*Q/Kd	
 //	potConstant = 1.17e-13;
 //	potConstant = Ec;
 	potConstant = -1;
@@ -245,7 +243,7 @@ __global__ void findProbabilities(REAL *probabilities,REAL *particles,REAL *pote
 		if(particles[x + N*y] > particles[thisi + N*thisj]) {
 
 			blockadePart = -1*findBlockade(thatp,thisp,p.Ec)/boxR[hyperIndex];
-			potentialPart = -potConstant*(potentials[thisi + N*thisj] - potentials[x + N*y] - changeToV/boxR[hyperIndex]);
+			potentialPart = -potConstant*(potentials[thisi + N*thisj] - potentials[x + N*y] - p.changeToV/boxR[hyperIndex]);
 			substratePart = substrate[thisi+ N*thisj];
 			currentPart = p.eV*i;
 
@@ -260,7 +258,7 @@ __global__ void findProbabilities(REAL *probabilities,REAL *particles,REAL *pote
 		if (particles[x + N*y] < particles[thisi + N*thisj]) {
 
 			blockadePart = -1*findBlockade(thatp,thisp,p.Ec)/boxR[hyperIndex]; 
-			potentialPart = potConstant*(potentials[thisi + N*thisj] - potentials[x + N*y] + changeToV/boxR[hyperIndex]);
+			potentialPart = potConstant*(potentials[thisi + N*thisj] - potentials[x + N*y] + p.changeToV/boxR[hyperIndex]);
 			substratePart = -substrate[thisi + N*thisj];
 			currentPart = -p.eV*i;
 
@@ -616,7 +614,7 @@ void particleScout(vectors &v,int x,int y, double randomNum,int blocks, int thre
 	
 	interaction<<<blocks,threads>>>(p,x,y,newx,newy,v.particles,v.jumpRecord,v.boxR);
 
-        potSwap<<<blocks,threads>>>( x, y,newx,newy,p.N,v.particles,v.boxR,v.potentials);
+        potSwap<<<blocks,threads>>>(p, x, y,newx,newy,p.N,v.particles,v.boxR,v.potentials);
         particleSwap<<<blocks,threads>>>(x, y, newx,newy,p.N,v.particles);
         findE<<<blocks,threads>>>(p.N, v.Ematrix,v.particles,v.potentials,v.substrate);
 
@@ -1118,10 +1116,9 @@ return newCoord;
 
 
 //perform a swap of two particles and recalculate all of the values
-__global__ void slowSwap(int i1,int j1,int i2, int j2,int intN, REAL* tempPar,REAL *tempPot, REAL* tempDos, REAL* particles,REAL *boxR,REAL* substrate, REAL *Ematrix, REAL *watcher,REAL *potentials) {
+__global__ void slowSwap(parameters p,int i1,int j1,int i2, int j2,int intN, REAL* tempPar,REAL *tempPot, REAL* tempDos, REAL* particles,REAL *boxR,REAL* substrate, REAL *Ematrix, REAL *watcher,REAL *potentials) {
 	double distance1, distance2;
 	int xPre,yPre,x,y;
-        double changeToV = 3.6e-10; // Ke*Q/Kd 
 
          int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
          if(idx<intN*intN) {
@@ -1140,7 +1137,7 @@ __global__ void slowSwap(int i1,int j1,int i2, int j2,int intN, REAL* tempPar,RE
                                 distance1 = boxR[i1 + intN*j1 + intN*intN*x + intN*intN*intN*y];
 
 	                        if (distance1 > 0) {
-	                                tempPot[idx] = tempPot[idx] + changeToV/distance1;
+	                                tempPot[idx] = tempPot[idx] + p.changeToV/distance1;
 					tempDos[idx] = tempPot[idx]*tempPar[idx] + substrate[idx]*tempPar[idx];
         	                }
 				else {
@@ -1153,7 +1150,7 @@ __global__ void slowSwap(int i1,int j1,int i2, int j2,int intN, REAL* tempPar,RE
 				
 				distance2 = boxR[i2 + intN*j2 + intN*intN*x + intN*intN*intN*y];
 				if (distance2 > 0) {
-                                        tempPot[idx] = tempPot[idx] - changeToV/distance2;
+                                        tempPot[idx] = tempPot[idx] - p.changeToV/distance2;
 					tempDos[idx] = tempPot[idx]*tempPar[idx]+ substrate[idx]*tempPar[idx];
                                 }
 				else {
@@ -1180,7 +1177,7 @@ __global__ void slowSwap(int i1,int j1,int i2, int j2,int intN, REAL* tempPar,RE
 //				distance1 = boxR[x + intN*y + intN*intN*i1 + intN*intN*intN*j1];
 //				watcher[idx] = boxR[i1 + intN*j1 + intN*intN*x + intN*intN*intN*y];
                                 if (distance1 > 0) {
-                                        tempPot[idx] = tempPot[idx] - changeToV/distance1;
+                                        tempPot[idx] = tempPot[idx] - p.changeToV/distance1;
 					tempDos[idx] = tempPot[idx]*tempPar[idx] + substrate[idx]*tempPar[idx];
                                 }
 				else {
@@ -1188,7 +1185,6 @@ __global__ void slowSwap(int i1,int j1,int i2, int j2,int intN, REAL* tempPar,RE
 					tempDos[idx] = tempPot[idx]*tempPar[idx] + substrate[idx]*tempPar[idx];
 //					watcher[idx] = tempPot[idx]*tempPar[idx] ;
                                 }
-//watcher[idx] = changeToV/distance1;
 
                                 tempPar[i2 + intN*j2] = -1;
 				x = (int) G_mod(xPre + ( intN/2 - i2),intN);
@@ -1196,7 +1192,7 @@ __global__ void slowSwap(int i1,int j1,int i2, int j2,int intN, REAL* tempPar,RE
 
                                 distance2 = boxR[i2 + intN*j2 + intN*intN*x + intN*intN*intN*y];
                                 if (distance2 > 0) {
-                                        tempPot[idx] = tempPot[idx] + changeToV/distance2;
+                                        tempPot[idx] = tempPot[idx] + p.changeToV/distance2;
 					tempDos[idx] = tempPot[idx]*tempPar[idx] + substrate[idx]*tempPar[idx];
                                 }
                                 else {
@@ -1226,10 +1222,9 @@ __global__ void subAdd(int intN, REAL *particles,REAL *potentials,REAL *substrat
 }
 
 //calculate electrical potential contribution to system energy
-__global__ void potAdd(int i1, int j1, int intN,REAL *particles, REAL *potentials, REAL *boxR){
+__global__ void potAdd(parameters p,int i1, int j1, int intN,REAL *particles, REAL *potentials, REAL *boxR){
         int x,y;
         int xPre,yPre;
-        double changeToV = 3.6e-10; // Ke*Q/Kd
         REAL distance1;
 
          int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
@@ -1243,7 +1238,7 @@ __global__ void potAdd(int i1, int j1, int intN,REAL *particles, REAL *potential
 
                         distance1 = boxR[i1 + intN*j1 + intN*intN*x + intN*intN*intN*y];
                         if (distance1 > 0) {
-                       		potentials[idx] = potentials[idx] -.5*changeToV/distance1; // .5 since Im coming from neutral
+                       		potentials[idx] = potentials[idx] -.5*p.changeToV/distance1; // .5 since Im coming from neutral
                         }
 			
 			
@@ -1258,7 +1253,7 @@ __global__ void potAdd(int i1, int j1, int intN,REAL *particles, REAL *potential
 
                         distance1 = boxR[i1 + intN*j1 + intN*intN*x + intN*intN*intN*y];
                         if (distance1 > 0) {
-                                potentials[idx] = potentials[idx] + .5*changeToV/distance1;
+                                potentials[idx] = potentials[idx] + .5*p.changeToV/distance1;
                         }
 
 
@@ -1270,10 +1265,9 @@ __global__ void potAdd(int i1, int j1, int intN,REAL *particles, REAL *potential
 }
 
 //calculate change in electric potentials when a particle is removed
-__global__ void potSub(int i1, int j1, int intN,REAL *particles,REAL *boxR,REAL *potentials){
+__global__ void potSub(parameters p,int i1, int j1, int intN,REAL *particles,REAL *boxR,REAL *potentials){
         int x,y;
         int xPre,yPre;
-        double changeToV = 3.6e-10; // Ke*Q/Kd
         REAL distance1;
 
          int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
@@ -1287,7 +1281,7 @@ __global__ void potSub(int i1, int j1, int intN,REAL *particles,REAL *boxR,REAL 
 
                         distance1 = boxR[i1 + intN*j1 + intN*intN*x + intN*intN*intN*y];
                         if (distance1 > 0) {
-                                potentials[idx] = potentials[idx] + changeToV/distance1;
+                                potentials[idx] = potentials[idx] + p.changeToV/distance1;
                         }
 
 
@@ -1302,7 +1296,7 @@ __global__ void potSub(int i1, int j1, int intN,REAL *particles,REAL *boxR,REAL 
 
                         distance1 = boxR[i1 + intN*j1 + intN*intN*x + intN*intN*intN*y];
                         if (distance1 > 0) {
-                                potentials[idx] = potentials[idx] - changeToV/distance1;
+                                potentials[idx] = potentials[idx] - p.changeToV/distance1;
                         }
 
 
@@ -1315,10 +1309,9 @@ __global__ void potSub(int i1, int j1, int intN,REAL *particles,REAL *boxR,REAL 
 }
 
 //calculate change in potential energy
-__global__ void potChange(int i1, int j1, int intN,REAL *particles,REAL *boxR,REAL *potentials,REAL* Ematrix){
+__global__ void potChange(parameters p,int i1, int j1, int intN,REAL *particles,REAL *boxR,REAL *potentials,REAL* Ematrix){
         int x,y;
         int xPre,yPre;
-        double changeToV = 3.6e-10; // Ke*Q/Kd
         REAL distance1;
 
          int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
@@ -1334,7 +1327,7 @@ __global__ void potChange(int i1, int j1, int intN,REAL *particles,REAL *boxR,RE
 
                         distance1 = boxR[i1 + intN*j1 + intN*intN*x + intN*intN*intN*y];
                         if (distance1 > 0) {
-                                potentials[idx] = potentials[idx] + changeToV/distance1;
+                                potentials[idx] = potentials[idx] + p.changeToV/distance1;
 //				potentials[idx] = 999;
                         }
 
@@ -1364,7 +1357,7 @@ __global__ void potChange(int i1, int j1, int intN,REAL *particles,REAL *boxR,RE
 
                         distance1 = boxR[i1 + intN*j1 + intN*intN*x + intN*intN*intN*y];
                         if (distance1 > 0) {
-                                potentials[idx] = potentials[idx] - changeToV/distance1;
+                                potentials[idx] = potentials[idx] - p.changeToV/distance1;
                       }
 
                 if(particles[idx] == 0) {
@@ -1423,11 +1416,9 @@ __global__ void particleDrop(int intN,int i ,int j,int newParticle,REAL *particl
 }
 
 //find the potentials after a swap of positions
-__global__ void potSwap(int i1, int j1, int i2, int j2,int intN,REAL *particles,REAL *boxR,REAL *potentials){ 
+__global__ void potSwap(parameters p,int i1, int j1, int i2, int j2,int intN,REAL *particles,REAL *boxR,REAL *potentials){ 
         int x,y;
 	int xPre,yPre;
-        double changeToV = 3.6e-10; // Ke*Q/Kd
-//	double changeToV = 3.6e-1; // Ke*Q/Kd 
 	REAL distance1,distance2;
 //	REAL before,after;
 
@@ -1446,10 +1437,10 @@ __global__ void potSwap(int i1, int j1, int i2, int j2,int intN,REAL *particles,
 			distance1 = boxR[i1 + intN*j1 + intN*intN*x + intN*intN*intN*y];
 			if (distance1 > 0) {
                                 if (particles[i1 + intN*j1] == 1) {
-					potentials[idx] = potentials[idx] + changeToV/distance1;
+					potentials[idx] = potentials[idx] + p.changeToV/distance1;
 				}
                                 else {
-					potentials[idx] = potentials[idx] - changeToV/distance1;
+					potentials[idx] = potentials[idx] - p.changeToV/distance1;
 				}
                        }
 
@@ -1463,10 +1454,10 @@ __global__ void potSwap(int i1, int j1, int i2, int j2,int intN,REAL *particles,
 
 			if (distance2 > 0) {
                                 if (particles[i2 + intN*j2] == 1) {
-					potentials[idx] = potentials[idx] + changeToV/distance2;
+					potentials[idx] = potentials[idx] + p.changeToV/distance2;
 				 }
                                 else {
-					potentials[idx] = potentials[idx] - changeToV/distance2;
+					potentials[idx] = potentials[idx] - p.changeToV/distance2;
 		                }
 			}
 		
@@ -1475,16 +1466,16 @@ __global__ void potSwap(int i1, int j1, int i2, int j2,int intN,REAL *particles,
         }
 }
 //force a particle to a certain place
-void C_particleForce(vectors &v,int intN, int i1, int j1,int i2,int j2,int threads, int blocks) {
+void C_particleForce(vectors &v,int intN, int i1, int j1,int i2,int j2,int threads, int blocks,parameters p) {
 			
-			potSwap<<<blocks,threads>>>(i1, j1, i2, j2,intN,v.particles,v.boxR,v.potentials);
+			potSwap<<<blocks,threads>>>(p,i1, j1, i2, j2,intN,v.particles,v.boxR,v.potentials);
 			particleSwap<<<blocks,threads>>>(i1, j1, i2,j2,intN,v.particles);
 			findE<<<blocks,threads>>>(intN, v.Ematrix,v.particles,v.potentials,v.substrate);
 
 
 }
 //pick which site would result in a decrease of system energy
-void C_particlePick(vectors &v,int intN, int i, int j,int threads, int blocks) {
+void C_particlePick(vectors &v,int intN, int i, int j,int threads, int blocks,parameters p) {
         if ((v.results[0] < v.results[1] ) ||(v.results[0] < v.results[2] ) ||(v.results[0] < v.results[3] ) ||(v.results[0] < v.results[4] ) ) {
         
 	int iPrev,jPrev,iPost,jPost;
@@ -1495,28 +1486,28 @@ void C_particlePick(vectors &v,int intN, int i, int j,int threads, int blocks) {
 
                 if ((v.results[1] > v.results[2] ) &&(v.results[1] > v.results[3] ) &&(v.results[1] > v.results[4] )  ) {
 			
-			potSwap<<<blocks,threads>>>( i, j, iPrev,j,intN,v.particles,v.boxR,v.potentials);	
+			potSwap<<<blocks,threads>>>(p, i, j, iPrev,j,intN,v.particles,v.boxR,v.potentials);	
 			particleSwap<<<blocks,threads>>>(i, j, iPrev,j,intN,v.particles);
 			findE<<<blocks,threads>>>(intN, v.Ematrix,v.particles,v.potentials,v.substrate);
 
 		}
 
                 else if ((v.results[2] > v.results[3] ) &&(v.results[2] > v.results[4] )) {
-                	potSwap<<<blocks,threads>>>( i, j, i,jPrev,intN,v.particles,v.boxR,v.potentials);
+                	potSwap<<<blocks,threads>>>(p, i, j, i,jPrev,intN,v.particles,v.boxR,v.potentials);
 			particleSwap<<<blocks,threads>>>(i, j, i,jPrev,intN,v.particles);
 			findE<<<blocks,threads>>>(intN, v.Ematrix,v.particles,v.potentials,v.substrate);
 
 		}
 
                 else if (v.results[3] > v.results[4]) {
-   	            	potSwap<<<blocks,threads>>>( i, j, iPost,j,intN,v.particles,v.boxR,v.potentials);
+   	            	potSwap<<<blocks,threads>>>(p, i, j, iPost,j,intN,v.particles,v.boxR,v.potentials);
 			particleSwap<<<blocks,threads>>>(i, j, iPost,j,intN,v.particles);
 			findE<<<blocks,threads>>>(intN, v.Ematrix,v.particles,v.potentials,v.substrate);
 
 		}
 
                 else {
-			potSwap<<<blocks,threads>>>( i, j, i,jPost,intN,v.particles,v.boxR,v.potentials);
+			potSwap<<<blocks,threads>>>(p, i, j, i,jPost,intN,v.particles,v.boxR,v.potentials);
                		particleSwap<<<blocks,threads>>>(i, j, i,jPost,intN,v.particles);
 			findE<<<blocks,threads>>>(intN, v.Ematrix,v.particles,v.potentials,v.substrate);
 
@@ -1525,7 +1516,7 @@ void C_particlePick(vectors &v,int intN, int i, int j,int threads, int blocks) {
 }
 
 //compare a site with its neighbors to find minimal system energy
-void fastTest(vectors &v,int i, int j, int intN,int threads, int blocks) {
+void fastTest(vectors &v,int i, int j, int intN,int threads, int blocks,parameters p) {
         
 	int iPrev,jPrev,iPost,jPost;
         iPrev = C_mod(i - 1,intN);
@@ -1539,23 +1530,23 @@ void fastTest(vectors &v,int i, int j, int intN,int threads, int blocks) {
 	result = thrust::reduce(p_Ematrix, p_Ematrix + intN*intN);
 	v.results[0] = result;	
 
-	slowSwap<<<blocks,threads>>>( i,j, iPrev, j, intN, v.tempPar,v.tempPot,  v.tempDos, v.particles,v.boxR, v.substrate,v.Ematrix, v.watcher,v.potentials);
+	slowSwap<<<blocks,threads>>>(p, i,j, iPrev, j, intN, v.tempPar,v.tempPot,  v.tempDos, v.particles,v.boxR, v.substrate,v.Ematrix, v.watcher,v.potentials);
 	result = thrust::reduce(p_tempDos, p_tempDos + intN*intN);
 	v.results[1] = result;	
 
-        slowSwap<<<blocks,threads>>>( i,j, i, jPrev, intN, v.tempPar,v.tempPot,  v.tempDos, v.particles,v.boxR, v.substrate,v.Ematrix, v.watcher,v.potentials);
+        slowSwap<<<blocks,threads>>>(p, i,j, i, jPrev, intN, v.tempPar,v.tempPot,  v.tempDos, v.particles,v.boxR, v.substrate,v.Ematrix, v.watcher,v.potentials);
         result = thrust::reduce(p_tempDos, p_tempDos + intN*intN);
 	v.results[2] = result;
 
-        slowSwap<<<blocks,threads>>>( i,j, iPost, j, intN, v.tempPar,v.tempPot,  v.tempDos, v.particles,v.boxR, v.substrate,v.Ematrix, v.watcher,v.potentials);
+        slowSwap<<<blocks,threads>>>(p, i,j, iPost, j, intN, v.tempPar,v.tempPot,  v.tempDos, v.particles,v.boxR, v.substrate,v.Ematrix, v.watcher,v.potentials);
         result = thrust::reduce(p_tempDos, p_tempDos + intN*intN);
 	v.results[3] = result;	
 
-        slowSwap<<<blocks,threads>>>( i,j, i, jPost, intN, v.tempPar,v.tempPot,  v.tempDos, v.particles,v.boxR, v.substrate,v.Ematrix, v.watcher,v.potentials);
+        slowSwap<<<blocks,threads>>>(p, i,j, i, jPost, intN, v.tempPar,v.tempPot,  v.tempDos, v.particles,v.boxR, v.substrate,v.Ematrix, v.watcher,v.potentials);
         result = thrust::reduce(p_tempDos, p_tempDos + intN*intN);
 	v.results[4] = result;	
 
-	C_particlePick(v, intN,  i,  j, threads,  blocks);	
+	C_particlePick(v, intN,  i,  j, threads,  blocks,p);	
 
 
 }
@@ -1580,28 +1571,28 @@ void spiral(parameters p,int index,int blocks, int threads,vectors &v) {
 			yNow = yNow;
 			xMod = C_mod(xNow,intN);
 			yMod = C_mod(yNow,intN);
-			fastTest(v, xMod, yMod,  intN, threads, blocks);
+			fastTest(v, xMod, yMod,  intN, threads, blocks,p);
 		}
 		for (yCount = 1; yCount < ringLength; yCount++) {
 			xNow = xNow;
 			yNow = yNow - 1;
 			xMod = C_mod(xNow,intN);
                         yMod = C_mod(yNow,intN);
-			fastTest(v, xMod, yMod,  intN, threads, blocks);
+			fastTest(v, xMod, yMod,  intN, threads, blocks,p);
 		}
                 for (xCount = 1; xCount < ringLength; xCount++) {
                         xNow = xNow + 1;
                         yNow = yNow;
                         xMod = C_mod(xNow,intN);
                         yMod = C_mod(yNow,intN);
-                	fastTest(v, xMod, yMod,  intN, threads, blocks);
+                	fastTest(v, xMod, yMod,  intN, threads, blocks,p);
 		}
 		for (yCount = 1; yCount < ringLength; yCount++) {
                         xNow = xNow;
                         yNow = yNow + 1;
                         xMod = C_mod(xNow,intN);
                         yMod = C_mod(yNow,intN);
-			fastTest(v, xMod, yMod,  intN, threads, blocks);
+			fastTest(v, xMod, yMod,  intN, threads, blocks,p);
                 }
 
 
@@ -1661,7 +1652,7 @@ return c_stable;
 
 
 //see if the system has reached a local minimum
-int checkStable(vectors &v,int c_stable,REAL min_value,REAL max_value,int min_offset,int max_offset,int intN,int blocks,int threads){
+int checkStable(vectors &v,int c_stable,REAL min_value,REAL max_value,int min_offset,int max_offset,int intN,int blocks,int threads,parameters p){
 	int i1,i2,j1,j2;
 	
 	c_stable = updateMinMax(v, c_stable, min_value,max_value); 
@@ -1673,7 +1664,7 @@ int checkStable(vectors &v,int c_stable,REAL min_value,REAL max_value,int min_of
                 i2 = max_offset%intN;
                 j2 = max_offset/intN;		
 
-                potSwap<<<blocks,threads>>>(i1, j1, i2, j2,intN,v.particles,v.boxR,v.potentials);
+                potSwap<<<blocks,threads>>>(p,i1, j1, i2, j2,intN,v.particles,v.boxR,v.potentials);
 		particleSwap<<<blocks,threads>>>(i1, j1, i2,j2,intN,v.particles);
 		findE<<<blocks,threads>>>(intN, v.Ematrix,v.particles,v.potentials,v.substrate);
 		
@@ -1684,7 +1675,7 @@ int checkStable(vectors &v,int c_stable,REAL min_value,REAL max_value,int min_of
 
 //move a particle from high system energy to low system energy
 int highsToLows(vectors &v,int max_offset,int min_offset,REAL max_value,REAL min_value,int c_stable, int blocks,int threads,parameters p) {
-	c_stable = checkStable(v, c_stable, min_value, max_value, min_offset,max_offset,p.N, blocks,threads);
+	c_stable = checkStable(v, c_stable, min_value, max_value, min_offset,max_offset,p.N, blocks,threads,p);
 
 	if (c_stable == 0) {
 		
@@ -1717,7 +1708,7 @@ void __global__ lastFlip(int intN,REAL *invertedDos,REAL *particles) {
 	}
 }
 //calculate dos
-void dosInvert (int intN,int threads,int blocks,vectors &v) {//should work for nParticles > 1
+void dosInvert (parameters p,int intN,int threads,int blocks,vectors &v) {//should work for nParticles > 1
 	int i,j;
 	double  result1,result2;
 	thrust::device_ptr<REAL> g_go =  thrust::device_pointer_cast(v.tempDos);
@@ -1734,11 +1725,11 @@ void dosInvert (int intN,int threads,int blocks,vectors &v) {//should work for n
 			matrixCopy<<<blocks,threads>>>(intN, v.particles , v.tempPar);
 			matrixCopy<<<blocks,threads>>>(intN, v.Ematrix ,v.tempDos);
 
-			potChange<<<blocks,threads>>>(i, j,  intN,v.tempPar,v.boxR,v.tempPot,v.tempDos);
+			potChange<<<blocks,threads>>>(p,i, j,  intN,v.tempPar,v.boxR,v.tempPot,v.tempDos);
 //			dosChange<<<blocks,threads>>>(intN, tempPar,tempDos,tempPot);
 			result1 = thrust::reduce(g_go, g_go + intN*intN);
 
-			potChange<<<blocks,threads>>>(i, j,  intN,v.tempPar,v.boxR,v.tempPot,v.tempDos);
+			potChange<<<blocks,threads>>>(p,i, j,  intN,v.tempPar,v.boxR,v.tempPot,v.tempDos);
 //			dosChange<<<blocks,threads>>>(intN, tempPar,tempDos,tempPot);
 			result2 = thrust::reduce(g_go, g_go + intN*intN);
 
@@ -1775,7 +1766,7 @@ void switcharoo(vectors &v,int c_stable,int threads, int blocks,parameters p) {
 //		max_value = *(inverted_ptr + max_offset);
 
 //	potentialse = *(g_ptr + max_offset);
-cout<<min_value<<" "<<max_value<<endl;
+//cout<<min_value<<" "<<max_value<<endl;
 
 	
 		c_stable = highsToLows(v, max_offset,min_offset, max_value,min_value,c_stable, blocks,threads,p);
@@ -1806,7 +1797,7 @@ for (int t = 0; t < 1; t++) {
 //original pair exchange
 	for(j = 0; j < N; j++) {
 	       	for(i = 0; i < N; i++) {
-			fastTest(v, i, j,  intN, threads, blocks);
+			fastTest(v, i, j,  intN, threads, blocks,p);
 		}
 	}
 }
@@ -1815,7 +1806,7 @@ for (int t = 0; t < 1; t++) {
 	switcharoo(v,c_stable,threads, blocks,p);
 	errorAsk("switching highs to lows");
 
-	dosInvert ( intN,threads,blocks,v);
+	dosInvert (p, intN,threads,blocks,v);
 
 
 
@@ -1910,7 +1901,9 @@ void paramLoad(parameters &p, char *argv[]){
         p.muVar = 0; // randomness of substrate (site energy?) -muvar to muvar
 //      muVar = 1e-5;
 //	p.boltzmann = 1.38e-23;
-	p.boltzmann = .01;
+	p.boltzmann = .01;//test
+//	p.changeToV = 1;//test
+	p.changeToV = 3.6e-10; // Ke*Q/Kd 
 //      eV = .05;
         p.eV = 0; //voltage (arbitrary units for now)
         p.Ec = 1600; //penalty for double-stacking
@@ -1933,6 +1926,7 @@ void paramLoad(parameters &p, char *argv[]){
 //      relax = 1;
         p.relax = 0; //wether or not to relax the system before running (should be 0 iff muVar & xyVar = 0)
         p.grabJ=0; //0 grabs average jumping distance , 1 grabs current
+	p.whichBox=1;
         p.xi = p.L; //tunneling factor
         p.xVar = 0; //variance of lattice site in x direction
         p.yVar = 0; // typically = xVar
@@ -1990,6 +1984,10 @@ void paramLoad(parameters &p, char *argv[]){
 			                intVal = atoi(value.c_str());
 			                p.grabJ = intVal;
 			        }
+				if(key == "whichBox") {
+					intVal = atoi(value.c_str());
+                                        p.whichBox = intVal;
+				}
 			
 			        if(key == "lineName") {
 			                 sprintf(p.lineName,  value.c_str());
@@ -2088,7 +2086,7 @@ void vectorLoad(vectors &v,parameters p,int blocks, int threads){
 	int i,j;
         for(j = 0; j < p.N; j++) {
                 for(i = 0; i < p.N; i++) {
-                        potAdd<<<blocks,threads>>>( i, j,  p.N, v.particles, v.potentials, v.boxR);
+                        potAdd<<<blocks,threads>>>(p, i, j,  p.N, v.particles, v.potentials, v.boxR);
 
                 }
         }
@@ -2108,7 +2106,7 @@ int main(int argc,char *argv[])
 	parameters p;
         vectors v;
 
-	srand48(time(0));
+//	srand48(time(0));
 
 	clock_t begin = clock();
 
@@ -2142,10 +2140,21 @@ int main(int argc,char *argv[])
 //	sprintf(str1, "line.txt");
 //	printBoxCPU(hereXDiff,N,boxName);
 	lastFlip<<<blocks,threads>>>(p.N,v.Ematrix,v.particles);
-	printBoxGPU(v.particles,p.N,p.boxName);
-//	printBoxGPU(v.probabilities,p.N,p.boxName);
-//	printBoxGPU(v.potentials,p.N,p.boxName);
-//	printBoxGPU(v.Ematrix,p.N,p.boxName);
+
+	switch(p.whichBox) {
+	case 1:
+		printBoxGPU(v.particles,p.N,p.boxName);
+	break;
+	case 2:
+		printBoxGPU(v.probabilities,p.N,p.boxName);
+	break;
+	case 3:
+		printBoxGPU(v.potentials,p.N,p.boxName);
+	break;
+	case 4:
+		printBoxGPU(v.Ematrix,p.N,p.boxName);
+	break;
+	}
 	printLineCPU(v.timeRun, p.timeName);
 	printLineGPU(v.jumpRecord,p.recordLength,p.lineName);
 	
@@ -2180,7 +2189,7 @@ int main(int argc,char *argv[])
 	cudaFree(v.jumpRecord);
 	cudaFree(v.picked);
 	clock_t end = clock();
-  	double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
+  //	double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
 
-cout<<"this took "<<elapsed_secs<<" seconds"<<endl;
+//cout<<"this took "<<elapsed_secs<<" seconds"<<endl;
 }

@@ -16,8 +16,8 @@ using namespace std;
 
 class parameters {
 public:
-        double xi,muVar,xVar,yVar,eV,Ec,L,T,alphaOne,alphaTwo,rejection,boltzmann;
-        int N,tSteps,nParticles,relax,grabJ,recordLength;
+        double xi,muVar,xVar,yVar,eV,Ec,L,T,alphaOne,alphaTwo,rejection,boltzmann,changeToV;
+        int N,tSteps,nParticles,relax,grabJ,recordLength,whichBox;
 	
 
         char boxName[256];
@@ -37,7 +37,7 @@ public:
 	REAL min1,min2,max1,max2;
 };
 
-__global__ void potSwap(int i1, int j1, int i2, int j2,int intN,REAL *particles,REAL *boxR,REAL *potentials);
+__global__ void potSwap(parameters p,int i1, int j1, int i2, int j2,int intN,REAL *particles,REAL *boxR,REAL *potentials);
 __global__ void particleSwap(int i,int j,int k,int l,int intN,REAL *particles);
 __global__ void findE(int intN, REAL *Ematrix, REAL *particles, REAL *potentials, REAL *substrate);
 
