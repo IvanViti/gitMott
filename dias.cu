@@ -35,13 +35,17 @@
 // construct REAL "type," depending on desired precision
 // set the maximum number of threads
 
+
 #ifdef DOUBLE
  #define REAL double
  #define MAXT 256
 #else
- #define REAL float
- #define MAXT 512
+ #define REAL double
+ #define MAXT 256
+// #define REAL float
+// #define MAXT 512
 #endif
+
 
 using namespace std;
 
@@ -491,6 +495,27 @@ void printBoxCPU(REAL *c_array,int size, char * fileName) {
         fclose(fp1);
 }
 
+/*
+void printBoxGPU(REAL *g_array,int size,char * fileName) {
+        REAL *c_array;
+        c_array =  new REAL[size*size];
+        int k,l;
+        cudaMemcpy(c_array,g_array,size*size*sizeof(REAL),cudaMemcpyDeviceToHost);
+	ofstream myfile;
+	myfile.open (fileName);
+        for (k = 0; k < size ; k++){
+                for(l = 0; l < size; l++) {
+			myfile<<c_array[k + l*size]<<" ";
+		}
+	myfile<<endl;
+	}
+
+	myfile.close();
+	delete[] c_array;
+}
+*/
+
+
 //print the gpu matrix to a file
 void printBoxGPU(REAL *g_array,int size,char * fileName) {
         REAL *c_array;
@@ -498,12 +523,15 @@ void printBoxGPU(REAL *g_array,int size,char * fileName) {
         int k,l;
         cudaMemcpy(c_array,g_array,size*size*sizeof(REAL),cudaMemcpyDeviceToHost);
         FILE    *fp1;
-//        char    str1[256];
-//        sprintf(str1, "box.txt");
         fp1 = fopen(fileName, "w");
+
         for (k = 0; k < size ; k++){
                 for(l = 0; l < size; l++) {
-
+/*
+			if(c_array[k + l*size] == 0) {
+				c_array[k + l*size] = 999;
+			}
+*/
                         fprintf(fp1, "%lf ",c_array[k + l*size]);
                 }
         fprintf(fp1,"\n");
@@ -512,6 +540,8 @@ void printBoxGPU(REAL *g_array,int size,char * fileName) {
         fclose(fp1);
 	delete[] c_array;
 }
+
+
 void printIntGPU(int *g_array,int size,char * name) {//can probably overload using C++11
         int *c_array;
         c_array =  new int[size];
@@ -582,15 +612,15 @@ REAL *loadMatrix(REAL *hereMatrix,char* fileName) {
         return hereMatrix;
 }
 
-//tracking time
+//tracking really the sum of the probabilities
 void trackTime(REAL *timeRun, REAL sum,int recordLength) {
-	double deltaT;
-	deltaT = (1/sum); 
 	if (tIndex < recordLength) { //prevent bad bad memory writing
-		timeRun[tIndex] = deltaT;
+		timeRun[tIndex] = sum;
 		tIndex++;
 	}
 }
+
+
 
 //second part of the heart of this code. Here the probabilities are summed and a number is picked from 0 to that number. The code then sums through the probabilities untill it reaches that number. In this way, probabilities which are higher will have a larger chance of getting picked. 
 void particleScout(vectors &v,int x,int y, double randomNum,int blocks, int threads,parameters p) {
@@ -602,7 +632,7 @@ void particleScout(vectors &v,int x,int y, double randomNum,int blocks, int thre
         thrust::inclusive_scan(g_go, g_go + p.N*p.N, g_return); // in-place scan 
 	sum = thrust::reduce(g_go, g_go + p.N*p.N);	
 
-	trackTime(v.timeRun, sum,p.recordLength); 
+//	trackTime(v.timeRun, sum,p.recordLength); 
 	
 	weightedWheel<<<blocks,threads>>>(p, randomNum,v.reducedProb, v.picked);
 	cudaMemcpy(v.herePicked,v.picked,sizeof(int),cudaMemcpyDeviceToHost);	
@@ -647,12 +677,45 @@ void findFirst(parameters p,int blocks,int threads,vectors &v) {
         cudaMemcpy(v.herePicked,v.picked,sizeof(int),cudaMemcpyDeviceToHost);
 }
 
+void findTime(parameters p,int blocks,int threads,vectors &v) {
+	int x,y;
+	double totalSum,result;
+	totalSum = 0;
+	thrust::device_ptr<REAL> g_go = thrust::device_pointer_cast(v.probabilities);
+
+	for (y = 0; y < p.N; y++) {
+		for(y = 0; y < p.N; y++) {
+			findProbabilities<<<blocks,threads>>>(v.probabilities,v.particles,v.potentials,v.substrate,v.boxR,x,y,p);
+			result = thrust::reduce(g_go, g_go + p.N*p.N);		
+			totalSum += result;
+/*
+cout<<result<<endl;
+if ((result < -0) && (result > -10000000)) {
+//if ((result ==0)) {
+printBoxGPU(v.probabilities,p.N,p.boxName);
+cout<<"gets to here"<<endl;
+}
+*/
+
+		}
+	}
+//	if (result == 0) {
+//		printBoxGPU(v.probabilities,p.N,p.boxName);
+//		cout<<"gets to here"<<endl;
+//	}
+
+//	cout<<totalSum<<endl;	
+	trackTime(v.sumRun, totalSum,p.recordLength);
+
+}
 
 //the particles are picked here. This is also where the system is run from. (find potential, find probabilities, and move particle are done here)
 void findJump(vectors &v,int threads,int blocks,parameters p) {
 	int x,y;	
 	double randomNum;
 
+	findTime(p,blocks,threads,v);	
+		
 	findFirst( p, blocks,threads,v);//find the first particle according to exp(-beta)        
 	
 
@@ -1896,7 +1959,7 @@ void paramLoad(parameters &p, char *argv[]){
         sprintf(p.boxName, "box.txt");
         sprintf(p.timeName,"time.txt");
 //      N = 32;
-        p.N = 100;  //size of system (N x N)
+        p.N = 10;  //size of system (N x N)
 //      N = 256;
         p.muVar = 0; // randomness of substrate (site energy?) -muvar to muvar
 //      muVar = 1e-5;
@@ -2037,7 +2100,8 @@ void vectorLoad(vectors &v,parameters p,int blocks, int threads){
 	v.herePicked = new int[0];
 	v.herePicked[0] = 0;
 	v.timeRun = new REAL[p.recordLength];
-        v.herePot =  new REAL[N*N];
+        v.sumRun = new REAL[p.recordLength];
+	v.herePot =  new REAL[N*N];
         v.herePot = C_zeros(N, v.herePot);
         v.hereProb = new REAL[N*N];
         v.hereProb = C_random(N,0,v.hereProb);
@@ -2113,6 +2177,7 @@ int main(int argc,char *argv[])
 	paramLoad(p,argv);
 	int threads,blocks;
         int N = p.N;
+	N = p.N;
 	threads=MAXT;
 	blocks=N*N/threads+(N*N%threads==0?0:1);
 
@@ -2154,8 +2219,11 @@ int main(int argc,char *argv[])
 	case 4:
 		printBoxGPU(v.Ematrix,p.N,p.boxName);
 	break;
+	case 5:
+		//no output box
+	break;
 	}
-	printLineCPU(v.timeRun, p.timeName);
+	printLineCPU(v.sumRun, p.timeName);
 	printLineGPU(v.jumpRecord,p.recordLength,p.lineName);
 	
 	

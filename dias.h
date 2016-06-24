@@ -6,8 +6,10 @@
  #define REAL double
  #define MAXT 256
 #else
- #define REAL float
- #define MAXT 512
+ #define REAL double
+ #define MAXT 256
+// #define REAL float
+// #define MAXT 512
 #endif
 
 
@@ -29,7 +31,7 @@ public:
 
 class vectors {
 public:
-        REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*Ematrix,*jumpRecord,*tempDos,*tempPar,*tempPot,*invertedDos,*watcher,*aMatrix,*timeRun;
+        REAL *reducedProb,*particles,*probabilities,*potentials,*substrate,*hereP,*hereProb,*herePot,*hereS,*boxR,*hereBoxR,*hereXDiff,*hereYDiff,*Ematrix,*jumpRecord,*tempDos,*tempPar,*tempPot,*invertedDos,*watcher,*aMatrix,*timeRun,*sumRun;
         REAL *rangeMatrix,*extraArray,*sumArray,*hereSum;
 	REAL results[5];
 	int *picked;
