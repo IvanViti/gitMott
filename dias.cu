@@ -697,7 +697,7 @@ void findTime(parameters p,int blocks,int threads,vectors &v) {
 	thrust::device_ptr<REAL> g_go = thrust::device_pointer_cast(v.probabilities);
 
 	for (y = 0; y < p.N; y++) {
-		for(y = 0; y < p.N; y++) {
+		for(x = 0;x < p.N; x++) {
 			findProbabilities<<<blocks,threads>>>(v.probabilities,v.particles,v.potentials,v.substrate,v.boxR,v.watcher,v.tStep,x,y,p);
 			result = thrust::reduce(g_go, g_go + p.N*p.N);		
 			totalSum += result;
