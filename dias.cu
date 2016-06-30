@@ -57,6 +57,18 @@ typedef struct {
 	REAL re;
 	REAL im;
 } COMPLEX;
+
+//absolute value on the gpu
+__device__ int G_abs(int a) {
+	
+	if (a < 0) {
+		a = -1*a;
+	}
+
+
+return a;
+}
+
 //wrote own modulo algorithms since computer modulo (%) does negative modulo's incorrectly (-3%10 = -3 instead of 7)
  __device__ int G_mod(int a,int b)
 {
@@ -174,44 +186,26 @@ bool errorAsk(const char *s="n/a")
     return true;
 };
 
-//here the occupation states at the lattice sites are compared to find what kind of coulomb blockade is taking place
  __device__ double findBlockade(int p,int thisp,double Ec)
 {
-	
-        if ((thisp == 1) && (p == -1 )) {
-                return 0; //no blockade penalty
-        }
-        if ((thisp == -1) && (p == 1 )) {
-                return 0;
-        }
-        if ((thisp == -1) && (p == 3)) {
-                return 2*Ec;
-        }
-        if ((thisp == 3) && (p == -1 )) { //not sure about this one figured twice the electrons means twice the penalty.
-                return 2*Ec;
-        }
-        if ((thisp == 1) && (p == 1 )) {
-                return Ec;
-        }
-	if ((thisp == -1) && (p == -1 )) {
-                return Ec;
-	}  
-        if ((thisp == 1) && (p == 3 )) {
-                return 0;
-        }
-        if ((thisp == 3) && (p == 1 )) {
-                return 0;
-        }
-	if ((thisp == 3) && (p == 3 )) { //no chance
-                return 1000*Ec; 
-        }
+	int deltaP = G_abs(thisp - p);
+	int rho; //for rho*Ec constant multiplier regarding how much stacking is happening	
 
-return 0; //in case something whacky happens
+	if (deltaP==0) { //if they are the same, then something is trying to stack 
+		return Ec;
+	}
+
+	if (deltaP == 2) { //if they are off by "1" then one guy is moving freely
+		return 0;
+	}
+
+	rho = deltaP/2; // if it's not the first two, then the system is relaxing
+	return -rho*Ec;
+	
 }
 
-
 //The first half of the heart of this program. Here the probabilities are calculated based on the energy change of the system and on the localization of the electron.
-__global__ void findProbabilities(REAL *probabilities,REAL *particles,REAL *potentials,REAL *substrate,REAL *boxR,int x, int y, parameters p)
+__global__ void findProbabilities(REAL *probabilities,REAL *particles,REAL *potentials,REAL *substrate,REAL *boxR,REAL *watcher,int tStep,int x, int y, parameters p)
 {
 //	REAL number = 11;
     int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
@@ -244,7 +238,7 @@ __global__ void findProbabilities(REAL *probabilities,REAL *particles,REAL *pote
 		thatp = particles[x + N*y];
 		thisp = particles[thisi + N*thisj];
 	
-		if(particles[x + N*y] > particles[thisi + N*thisj]) {
+		if(particles[x + N*y] > particles[thisi + N*thisj]) { //situation 1
 
 			blockadePart = -1*findBlockade(thatp,thisp,p.Ec)/boxR[hyperIndex];
 			potentialPart = -potConstant*(potentials[thisi + N*thisj] - potentials[x + N*y] - p.changeToV/boxR[hyperIndex]);
@@ -259,7 +253,7 @@ __global__ void findProbabilities(REAL *probabilities,REAL *particles,REAL *pote
 			
 		}
 
-		if (particles[x + N*y] < particles[thisi + N*thisj]) {
+		if (particles[x + N*y] < particles[thisi + N*thisj]) { //situation 2
 
 			blockadePart = -1*findBlockade(thatp,thisp,p.Ec)/boxR[hyperIndex]; 
 			potentialPart = potConstant*(potentials[thisi + N*thisj] - potentials[x + N*y] + p.changeToV/boxR[hyperIndex]);
@@ -273,36 +267,41 @@ __global__ void findProbabilities(REAL *probabilities,REAL *particles,REAL *pote
 
 		}
 
-		if ( particles[x + N*y] == particles[thisi + N*thisj] ){
-/*
-			if (p > 0 ) {
-				currentPart  = eV*i;
+		if ( particles[x + N*y] == particles[thisi + N*thisj] ){// stacking
+
+			if (particles[x + N*y] < 0) { //then p1 is getting more negative and p2 is getting more positive (like in situation 1) 
+		                blockadePart = -1*findBlockade(thatp,thisp,p.Ec)/boxR[hyperIndex];
+	                        potentialPart = potConstant*(potentials[thisi + N*thisj] - potentials[x + N*y] + p.changeToV/boxR[hyperIndex]);
+        	                substratePart = -substrate[thisi + N*thisj];
+                	        currentPart = -p.eV*i;
 			}
 
-			else {
-                                currentPart  = -eV*i;
-                        }
-*/
+			else  {  //then p1 is getting more positive and p2 is getting more negative (situation2-like transfer is happening)
+				blockadePart = -1*findBlockade(thatp,thisp,p.Ec)/boxR[hyperIndex];
+                	        potentialPart = -potConstant*(potentials[thisi + N*thisj] - potentials[x + N*y] - p.changeToV/boxR[hyperIndex]);
+        	                substratePart = substrate[thisi+ N*thisj];
+	                        currentPart = p.eV*i;
+			}
 
-			substratePart = -substrate[thisi+ N*thisj];
-			blockadePart = -1*findBlockade(thatp,thisp,p.Ec)/boxR[hyperIndex];
-			potentialPart = potConstant*(potentials[thisi + N*thisj] - potentials[x + N*y]);
-	
-			currentPart = 0;
+//			currentPart = 0;
 //			substratePart = 0;
 //			potentialPart = 0;
 //			blockadePart = 0;
+
+if (tStep ==4) {
+//blockadePart = 0;
+}
 
 		}
 
 
 
 	probabilities[idx] = exp(distancePart+p.alphaTwo*(blockadePart+potentialPart+substratePart+currentPart)/p.T);
-//	probabilities[idx] = distancePart+p.alphaTwo*(blockadePart+potentialPart+substratePart+currentPart)/p.T;
+//	watcher[idx] = distancePart+p.alphaTwo*(blockadePart+potentialPart+substratePart+currentPart)/p.T;
 
 
 	if (probabilities[idx] > 1) {
-		probabilities[idx] = 1;
+//		probabilities[idx] = 1;
 	}
 
 	if ((thisi==x && thisj==y )  ){
@@ -329,61 +328,44 @@ __device__ void fillRecord(REAL *jumpRecord,REAL fillVal,int N) {
 
 
 
-//figures out which way the electron jump will occur and also calculates the current or jump distance
+//calculates which direction the electron went and how far (not necessary if you are not measuring anything)
  __global__ void interaction(parameters p,int x,int y,int newx,int newy,REAL *particles,REAL *jumpRecord,REAL *boxR) {
-	int N = p.N,obsx,obsy;
-	int whichWay = 0;
-	REAL fillVal;
+        int N = p.N,obsx,obsy;
+        int whichWay = 0;
+        REAL fillVal;
 
         int idx = blockIdx.x*blockDim.x + threadIdx.x;
-        if (idx < 1) {
+        if (idx < 1) {//only needs to be done once
+		if (particles[x + y*N] == particles[newx + newy*N]) {
+			if (particles[x + y*N] > 0) {
+				whichWay = 1;
+			}
+			else {
+				whichWay = -1;
+			}
+		}
 
-        if ((particles[x + y*N] == -1 ) && ( particles[newx + newy*N] == -1 ) ) { //currently useless as T << T_stack
-		whichWay=0;
-        }
+                else if (particles[x + y*N] > particles[newx + newy*N] ) {
+                        whichWay = 1;
+                }
 
-        else if (particles[x + y*N] > particles[newx + newy*N] ) {
-		whichWay = 1;
-        }
+                else if (particles[x + y*N] < particles[newx + newy*N]) {
+                        whichWay = -1;
+                }
 
-        else if (particles[x + y*N] < particles[newx + newy*N]) {
-		whichWay = -1;
-        }
+                obsx = (int) G_mod(newx + ( p.N/2 - x),p.N);
+                obsy = (int) G_mod(newy + ( p.N/2 - y),p.N);
 
+                if(p.grabJ == 1) {
+                              fillVal = -whichWay*(obsx-p.N/2);
+                }
 
-	else if ((particles[x + y*N] == 1) && (particles[newx + newy*N] == 1)) {
-		whichWay = 0;
-	}
+                if(p.grabJ == 0) {
+                        fillVal = boxR[x + N*y + N*N*obsx + N*N*N*obsy]/p.L;
+                }
 
+                        fillRecord(jumpRecord,fillVal,p.recordLength);
 
-        obsx = (int) G_mod(newx + ( p.N/2 - x),p.N);
-        obsy = (int) G_mod(newy + ( p.N/2 - y),p.N);
-
-
-	if(p.grabJ == 1) {
-		
-                      fillVal = -whichWay*(obsx-p.N/2);
-//			fillVal = x-newx;
-
-/*
-fillVal = -dx;
-fillRecord(jumpRecord,fillVal,p.recordLength);
-fillVal = obsx - p.N/2 ;
-fillRecord(jumpRecord,fillVal,p.recordLength);
-*/
-
-//                }
-
-	}
-
-
-	if(p.grabJ == 0) {
-		fillVal = boxR[x + N*y + N*N*obsx + N*N*N*obsy]/p.L;
-	}
-
-
-			fillRecord(jumpRecord,fillVal,p.recordLength);
-	
 	}
 }
 
@@ -495,6 +477,28 @@ void printBoxCPU(REAL *c_array,int size, char * fileName) {
         fclose(fp1);
 }
 
+void printMagnifyGPU(REAL *g_array,int size,char * fileName) {
+        REAL *c_array;
+        c_array =  new REAL[size*size];
+        int k,l;
+        cudaMemcpy(c_array,g_array,size*size*sizeof(REAL),cudaMemcpyDeviceToHost);
+        FILE    *fp1;
+        fp1 = fopen(fileName, "w");
+
+        for (k = 0; k < size ; k++){
+                for(l = 0; l < size; l++) {
+                        fprintf(fp1, "%lf ",c_array[k + l*size]*1e100);
+                }
+        fprintf(fp1,"\n");
+        }
+//cleanup
+        fclose(fp1);
+        delete[] c_array;
+
+
+
+}
+
 /*
 void printBoxGPU(REAL *g_array,int size,char * fileName) {
         REAL *c_array;
@@ -532,7 +536,7 @@ void printBoxGPU(REAL *g_array,int size,char * fileName) {
 				c_array[k + l*size] = 999;
 			}
 */
-                        fprintf(fp1, "%lf ",c_array[k + l*size]);
+                        fprintf(fp1, "%lf ",c_array[l + k*size]); //transposed l & k since thats how octave reads it
                 }
         fprintf(fp1,"\n");
         }
@@ -624,28 +628,37 @@ void trackTime(REAL *timeRun, REAL sum,int recordLength) {
 
 //second part of the heart of this code. Here the probabilities are summed and a number is picked from 0 to that number. The code then sums through the probabilities untill it reaches that number. In this way, probabilities which are higher will have a larger chance of getting picked. 
 void particleScout(vectors &v,int x,int y, double randomNum,int blocks, int threads,parameters p) {
-        double sum;
 	int lastx,lasty,newx,newy;
 	thrust::device_ptr<REAL> g_go = thrust::device_pointer_cast(v.probabilities);
         thrust::device_ptr<REAL> g_return = thrust::device_pointer_cast(v.reducedProb);
 
-        thrust::inclusive_scan(g_go, g_go + p.N*p.N, g_return); // in-place scan 
-	sum = thrust::reduce(g_go, g_go + p.N*p.N);	
+//	double sum;
+	thrust::inclusive_scan(g_go, g_go + p.N*p.N, g_return); // in-place scan 
+//	sum = thrust::reduce(g_go, g_go + p.N*p.N);	
 
 //	trackTime(v.timeRun, sum,p.recordLength); 
 	
 	weightedWheel<<<blocks,threads>>>(p, randomNum,v.reducedProb, v.picked);
 	cudaMemcpy(v.herePicked,v.picked,sizeof(int),cudaMemcpyDeviceToHost);	
-//cout<<v.herePicked[0]<<endl;	
+/*
+cudaMemcpy(v.hereProb,v.probabilities,p.N*p.N*sizeof(REAL),cudaMemcpyDeviceToHost);
+cout<<"cell "<<v.herePicked[0]<<" was picked with a weight "<<v.hereProb[v.herePicked[0]]<<" out of a total "<<sum<<endl;
+//	printMagnifyGPU(v.reducedProb,p.N,"reduced.dat");
+*/
+//	printBoxGPU(v.reducedProb,p.N,"reduced.dat");
+
+
         lastx = v.herePicked[0]/p.N;
         lasty = v.herePicked[0]%p.N;
         newx = C_mod(x - p.N/2 +  lastx,p.N);
         newy = C_mod(y - p.N/2 +  lasty,p.N);
+
+//cout<<x<<" "<<y<<" "<<newx<<" "<<newy<<endl;
 	
 	interaction<<<blocks,threads>>>(p,x,y,newx,newy,v.particles,v.jumpRecord,v.boxR);
 
         potSwap<<<blocks,threads>>>(p, x, y,newx,newy,p.N,v.particles,v.boxR,v.potentials);
-        particleSwap<<<blocks,threads>>>(x, y, newx,newy,p.N,v.particles);
+        particleMove<<<blocks,threads>>>(x, y, newx,newy,p.N,v.particles);
         findE<<<blocks,threads>>>(p.N, v.Ematrix,v.particles,v.potentials,v.substrate);
 
 	errorAsk("particleJump");
@@ -685,7 +698,7 @@ void findTime(parameters p,int blocks,int threads,vectors &v) {
 
 	for (y = 0; y < p.N; y++) {
 		for(y = 0; y < p.N; y++) {
-			findProbabilities<<<blocks,threads>>>(v.probabilities,v.particles,v.potentials,v.substrate,v.boxR,x,y,p);
+			findProbabilities<<<blocks,threads>>>(v.probabilities,v.particles,v.potentials,v.substrate,v.boxR,v.watcher,v.tStep,x,y,p);
 			result = thrust::reduce(g_go, g_go + p.N*p.N);		
 			totalSum += result;
 /*
@@ -721,7 +734,7 @@ void findJump(vectors &v,int threads,int blocks,parameters p) {
 
 	x = v.herePicked[0]%p.N;
         y = v.herePicked[0]/p.N;
-	findProbabilities<<<blocks,threads>>>(v.probabilities,v.particles,v.potentials,v.substrate,v.boxR,x,y,p);
+	findProbabilities<<<blocks,threads>>>(v.probabilities,v.particles,v.potentials,v.substrate,v.boxR,v.watcher,v.tStep,x,y,p);
 	errorAsk("find probabilities"); //check for error
 
 	
@@ -1151,12 +1164,55 @@ __global__ void particleSwap(int i,int j,int k,int l,int intN,REAL *particles) {
 __device__ void g_particleSwap(int i,int j,int k,int l,int intN,REAL *particles){
 	
         int temp;
- //        int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
-//	if (idx < 1) {
+        int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+	if (idx < 1) {
 	temp = particles[i + j*intN];
         particles[i + j*intN]= particles[k + l*intN];
         particles[k + l*intN] = temp;	
-//	}
+	}
+}
+
+__global__ void particleMove(int i,int j,int k,int l,int N,REAL *particles) {
+        int deltaP = G_abs(particles[k + N*l] - particles[i + N*j]);
+        int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
+
+        if (idx < 1) {
+	        if (deltaP == 0) {
+ 		        if (particles[i + j*N] > 0) { //particle is moving from p1 to p2
+        			particles[i + j*N] = particles[i + j*N] - 2;
+				particles[k + l*N] = particles[k + l*N] + 2;	
+			}
+			else { // hole is moving from p1 to p2 (particle is moving from p2 to p1)
+				particles[i + j*N] = particles[i + j*N] + 2;
+                        	particles[k + l*N] = particles[k + l*N] - 2;
+	                }
+		}
+
+		if (deltaP == 2) {
+			if (particles[i + j*N] > particles[k + l*N]) {
+				particles[i + j*N] = particles[i + j*N] - 2;
+	                        particles[k + l*N] = particles[k + l*N] + 2;
+			}
+			else {
+				particles[i + j*N] = particles[i + j*N] + 2;
+	                        particles[k + l*N] = particles[k + l*N] - 2;
+			}	
+		}
+	
+		if (deltaP > 2) { 
+	                if (particles[i + j*N] > particles[k + l*N]) {
+	                        particles[i + j*N] = particles[i + j*N] - 2;
+	                        particles[k + l*N] = particles[k + l*N] + 2;
+	                }
+	                else {
+	                        particles[i + j*N] = particles[i + j*N] + 2;
+	                        particles[k + l*N] = particles[k + l*N] - 2;
+	                }
+	
+		}
+	
+	}	
+	
 }
 
 //change coordinates from observer to particle
@@ -1479,16 +1535,60 @@ __global__ void particleDrop(int intN,int i ,int j,int newParticle,REAL *particl
 }
 
 //find the potentials after a swap of positions
+//generalized for deltaP>0
 __global__ void potSwap(parameters p,int i1, int j1, int i2, int j2,int intN,REAL *particles,REAL *boxR,REAL *potentials){ 
         int x,y;
 	int xPre,yPre;
 	REAL distance1,distance2;
 //	REAL before,after;
 
+        int deltaP = G_abs(particles[i2 + intN*j2] - particles[i1 + intN*j1]);
+
 	 int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
 	 if(idx<intN*intN) {
 //		before = Ematrix[idx];
-	        if (particles[i1 + intN*j1] != particles[i2 + intN*j2]) {
+
+
+		if (deltaP == 0) { //if they are the same, then something has stacked p1 either started positive and became more positive or it started negative and became more negative
+                        yPre = idx/intN;//if it works
+                        xPre = idx%intN;//it works
+
+                        x = (int) G_mod(xPre + ( intN/2 - i1),intN);
+                        y = (int) G_mod(yPre + (intN/2 - j1),intN);
+			distance1 = boxR[i1 + intN*j1 + intN*intN*x + intN*intN*intN*y]; // first I do the change at the first position
+			if (distance1 > 0) {
+//                                if (particles[i1 + intN*j1] < 0) {
+                                if (particles[i1 + intN*j1] > 0) {
+                                        potentials[idx] = potentials[idx] + p.changeToV/distance1;
+                                }
+                                else {
+                                        potentials[idx] = potentials[idx] - p.changeToV/distance1;
+                                }
+                       }
+			
+                        x = (int) G_mod(xPre + ( intN/2 - i2),intN);
+                        y = (int) G_mod(yPre + (intN/2 - j2),intN);
+
+                        distance2 = boxR[i2 + intN*j2 + intN*intN*x + intN*intN*intN*y];
+
+                        if (distance2 > 0) {
+//                                if (particles[i1 + intN*j1] > 0) { //might be the other way
+				if (particles[i1 + intN*j1] < 0) { //might be the other way
+                                        potentials[idx] = potentials[idx] + p.changeToV/distance2;
+				}
+                                else {
+                                        potentials[idx] = potentials[idx] - p.changeToV/distance2;
+                                }
+                        }
+			
+
+
+		}
+
+
+	        if ((deltaP == 2) || (deltaP > 2)) { //if they are 1 change away from each other (a particle is traveling without blockade)
+		// the last line could be written more simply, but this way shows that both scenarios act the same way
+		//system is relaxing, kind of like the opposite of stacking, except this time it can go either way (but I only have to calculate the one way that it is going)
 
 			yPre = idx/intN;//if it works
                         xPre = idx%intN;//it works
@@ -1499,7 +1599,7 @@ __global__ void potSwap(parameters p,int i1, int j1, int i2, int j2,int intN,REA
 
 			distance1 = boxR[i1 + intN*j1 + intN*intN*x + intN*intN*intN*y];
 			if (distance1 > 0) {
-                                if (particles[i1 + intN*j1] == 1) {
+                                if (particles[i1 + intN*j1] > particles[i2 + intN*j2]) {
 					potentials[idx] = potentials[idx] + p.changeToV/distance1;
 				}
                                 else {
@@ -1516,7 +1616,7 @@ __global__ void potSwap(parameters p,int i1, int j1, int i2, int j2,int intN,REA
                         distance2 = boxR[i2 + intN*j2 + intN*intN*x + intN*intN*intN*y];//might be the other way
 
 			if (distance2 > 0) {
-                                if (particles[i2 + intN*j2] == 1) {
+                                if (particles[i2 + intN*j2] > particles[i1 + intN*j1]) {
 					potentials[idx] = potentials[idx] + p.changeToV/distance2;
 				 }
                                 else {
@@ -2070,6 +2170,11 @@ void paramLoad(parameters &p, char *argv[]){
                                         realVal = atof(value.c_str());
                                         p.rejection = realVal;
                                 }
+ 
+                                if(key == "Ec") {
+                                        realVal = atof(value.c_str());
+                                        p.Ec = realVal;
+                                }
 
 	
 			}
@@ -2197,6 +2302,7 @@ int main(int argc,char *argv[])
 //run simulation
 	for(int t = 0; t < p.tSteps ; t++) {
 		countThese = 1;
+		v.tStep = t;
 		findJump(v, threads, blocks,p);
 	}
 
@@ -2225,7 +2331,7 @@ int main(int argc,char *argv[])
 	}
 	printLineCPU(v.sumRun, p.timeName);
 	printLineGPU(v.jumpRecord,p.recordLength,p.lineName);
-	
+//	printBoxGPU(v.watcher,p.N,"watcher.dat");	
 	
 
 /*

@@ -16,3 +16,7 @@ where input.txt is the input parameter file. Can be empty. All input parameters 
 
 JumpMatrix initialized with 999's since one doesnt know how many jumps there will be. Extra 999s can be removed during post processing. 
 
+
+xyVar should be set between 0 and .5 for best results
+muVar should be set between 0 and .05 for best results
+

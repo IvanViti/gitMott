@@ -36,10 +36,13 @@ public:
 	REAL results[5];
 	int *picked;
 	int *herePicked;//wtf cuda
+	int tStep;
 	REAL min1,min2,max1,max2;
 };
 
 __global__ void potSwap(parameters p,int i1, int j1, int i2, int j2,int intN,REAL *particles,REAL *boxR,REAL *potentials);
 __global__ void particleSwap(int i,int j,int k,int l,int intN,REAL *particles);
 __global__ void findE(int intN, REAL *Ematrix, REAL *particles, REAL *potentials, REAL *substrate);
+__global__ void particleMove(int i,int j,int k,int l,int intN,REAL *particles);
+
 
