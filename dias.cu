@@ -217,8 +217,7 @@ __global__ void findProbabilities(REAL *probabilities,REAL *particles,REAL *pote
 	potConstant = -1;
 	N = p.N;
 
-	if(idx<N*N)
-    {         
+	if(idx<N*N) {        
 		i = idx/N;
                 j = idx%N;
 		i = i-N/2;
@@ -288,29 +287,26 @@ __global__ void findProbabilities(REAL *probabilities,REAL *particles,REAL *pote
 //			potentialPart = 0;
 //			blockadePart = 0;
 
-if (tStep ==4) {
-//blockadePart = 0;
-}
-
 		}
 
 
 
-	probabilities[idx] = exp(distancePart+p.alphaTwo*(blockadePart+potentialPart+substratePart+currentPart)/p.T);
-//	watcher[idx] = distancePart+p.alphaTwo*(blockadePart+potentialPart+substratePart+currentPart)/p.T;
+
+		probabilities[idx] = exp(distancePart+p.alphaTwo*(blockadePart+potentialPart+substratePart+currentPart)/p.T);
+		watcher[idx] = distancePart+p.alphaTwo*(blockadePart+potentialPart+substratePart+currentPart)/p.T;
 
 
-	if (probabilities[idx] > 1) {
+		if (probabilities[idx] > 1) {
 //		probabilities[idx] = 1;
-	}
+		}
 
-	if ((thisi==x && thisj==y )  ){
+		if ((thisi==x && thisj==y )  ){
 //		probabilities[idx] = 1; //force probability of jumping to self to 1 (avoids 0/0 problems)
 //		probabilities[idx] = 0; //rejection free monte carlo algorithm 
-		probabilities[idx] = p.rejection;
+			probabilities[idx] = p.rejection;
+		}
+	
 	}
-	}
-
 };
 
 __device__ void fillRecord(REAL *jumpRecord,REAL fillVal,int N) {
@@ -727,19 +723,27 @@ void findJump(vectors &v,int threads,int blocks,parameters p) {
 	int x,y;	
 	double randomNum;
 
+//	printBoxGPU(v.potentials,p.N,"pot0.dat");
+
 	findTime(p,blocks,threads,v);	
+
+//	printBoxGPU(v.potentials,p.N,"pot1.dat");
 		
 	findFirst( p, blocks,threads,v);//find the first particle according to exp(-beta)        
-	
+
+//	printBoxGPU(v.potentials,p.N,"pot2.dat");
+
 
 	x = v.herePicked[0]%p.N;
         y = v.herePicked[0]/p.N;
 	findProbabilities<<<blocks,threads>>>(v.probabilities,v.particles,v.potentials,v.substrate,v.boxR,v.watcher,v.tStep,x,y,p);
 	errorAsk("find probabilities"); //check for error
-
+//	printBoxGPU(v.potentials,p.N,"pot3.dat");
 	
 	randomNum = drand48();
 	particleScout(v, x, y, randomNum, blocks, threads,p);
+//	printBoxGPU(v.potentials,p.N,"pot4.dat");
+
 }
 
 //calculate energy contribution from stacked particles
@@ -1348,6 +1352,7 @@ __global__ void potAdd(parameters p,int i1, int j1, int intN,REAL *particles, RE
 
          int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
          if(idx<intN*intN) {
+/*
                 if (particles[i1 + intN*j1] == 1) {
 
 		        yPre = idx/intN;//if it works
@@ -1377,8 +1382,20 @@ __global__ void potAdd(parameters p,int i1, int j1, int intN,REAL *particles, RE
 
 
                 }
+*/
+	
 
-		
+                        yPre = idx/intN;//if it works
+                        xPre = idx%intN;//it works
+                        x = (int) G_mod(xPre + (intN/2 - i1),intN);
+                        y = (int) G_mod(yPre + (intN/2 - j1),intN);
+
+                        distance1 = boxR[i1 + intN*j1 + intN*intN*x + intN*intN*intN*y];
+                        if (distance1 > 0) {
+                                potentials[idx] = potentials[idx] - particles[i1 + intN*j1]*.5*p.changeToV/distance1;
+                        }
+
+	
 
 	}
 }
@@ -1573,7 +1590,7 @@ __global__ void potSwap(parameters p,int i1, int j1, int i2, int j2,int intN,REA
 
                         if (distance2 > 0) {
 //                                if (particles[i1 + intN*j1] > 0) { //might be the other way
-				if (particles[i1 + intN*j1] < 0) { //might be the other way
+				if (particles[i1 + intN*j1] <= 0) { //might be the other way
                                         potentials[idx] = potentials[idx] + p.changeToV/distance2;
 				}
                                 else {
@@ -2212,7 +2229,8 @@ void vectorLoad(vectors &v,parameters p,int blocks, int threads){
         v.hereProb = C_random(N,0,v.hereProb);
         v.hereP = new REAL[N*N];
 //	v.hereP = C_clump(p.N,p.nParticles,v.hereP);//test relaxation
-        v.hereP = C_spread(N,p.nParticles,v.hereP); //test general potential
+//        v.hereP = C_spread(N,p.nParticles,v.hereP); //test general potential
+	v.hereP = C_zeros(p.N,v.hereP); //zeros for the true neutral map (-2,0,2 ...etc)
 //      hereP = C_random(N,nParticles,hereP);   
 //      hereP = C_random(N,0,hereP); //empty system
 //      hereP = C_more(N,nParticles,hereP);
