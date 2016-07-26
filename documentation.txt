@@ -1,7 +1,10 @@
 ﻿Dias Documentation:
 
+The purpose of this code is to explore the physics of coulomb blockades on a grid of nano-granules.
 
-Program only requires 2 files to run (dias.cu and dias.h).  
+The code is split up into 2 main parts. The first part is an artificial relaxer to bring the system into a local minimum of energy. The second part is the main code which uses the "conserved order parameter marcov chain monte carlo continous time algorithm" method. First a particle is chosen based on its density of states (with probability exp(-E/kT). Then, its probability to switch with any particle around it is measured. The jump is picked randomly with proportion equal to each site's jump probability. This algorithm is repeated and values of interest are recorded.
+
+Program only requires 3 files to run (dias.cu, dias.h, and input.txt).  
 
 compiled using:
 nvcc dias.cu -o dias.o
