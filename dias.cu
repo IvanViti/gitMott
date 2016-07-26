@@ -210,7 +210,7 @@ __global__ void findProbabilities(REAL *probabilities,REAL *particles,REAL *pote
 //	REAL number = 11;
     int idx=(blockIdx.y*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x;
     int i,j,thisi,thisj,thatp,thisp,hyperIndex,N;
-	double potConstant,currentPart,distancePart,blockadePart,potentialPart,substratePart;
+	double potConstant,currentPart,distancePart,blockadePart,potentialPart,substratePart,energyPart;
 //	double doublej, doublei,r;
 //	potConstant = 1.17e-13;
 //	potConstant = Ec;
@@ -290,15 +290,15 @@ __global__ void findProbabilities(REAL *probabilities,REAL *particles,REAL *pote
 		}
 
 
+		energyPart = p.alphaTwo*(blockadePart+potentialPart+substratePart+currentPart)/p.T;
+                if (energyPart > 1) {
+		              energyPart = 1;  
+		}
 
-
-		probabilities[idx] = exp(distancePart+p.alphaTwo*(blockadePart+potentialPart+substratePart+currentPart)/p.T);
+		probabilities[idx] = exp(distancePart+energyPart);
 		watcher[idx] = distancePart+p.alphaTwo*(blockadePart+potentialPart+substratePart+currentPart)/p.T;
 
 
-		if (probabilities[idx] > 1) {
-//		probabilities[idx] = 1;
-		}
 
 		if ((thisi==x && thisj==y )  ){
 //		probabilities[idx] = 1; //force probability of jumping to self to 1 (avoids 0/0 problems)
@@ -2229,8 +2229,8 @@ void vectorLoad(vectors &v,parameters p,int blocks, int threads){
         v.hereProb = C_random(N,0,v.hereProb);
         v.hereP = new REAL[N*N];
 //	v.hereP = C_clump(p.N,p.nParticles,v.hereP);//test relaxation
-//        v.hereP = C_spread(N,p.nParticles,v.hereP); //test general potential
-	v.hereP = C_zeros(p.N,v.hereP); //zeros for the true neutral map (-2,0,2 ...etc)
+        v.hereP = C_spread(N,p.nParticles,v.hereP); //test general potential
+//	v.hereP = C_zeros(p.N,v.hereP); //zeros for the true neutral map (-2,0,2 ...etc)
 //      hereP = C_random(N,nParticles,hereP);   
 //      hereP = C_random(N,0,hereP); //empty system
 //      hereP = C_more(N,nParticles,hereP);
