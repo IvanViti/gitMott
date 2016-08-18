@@ -333,7 +333,7 @@ __device__ void fillRecord(REAL *jumpRecord,REAL fillVal,int N) {
         int N = p.N,obsx,obsy;
         int whichWay = 0;
         REAL fillVal;
-	fillVal = newx;
+//	fillVal = newx;
 
         int idx = blockIdx.x*blockDim.x + threadIdx.x;
         if (idx == 0) {//only needs to be done once
@@ -358,10 +358,10 @@ __device__ void fillRecord(REAL *jumpRecord,REAL fillVal,int N) {
                 obsy = (int) G_mod(newy + ( p.N/2 - y),p.N);
 
                 if(p.grabJ == 1) {
-//                              fillVal = -whichWay*(obsx-p.N/2);
+                              fillVal = -whichWay*(obsx-p.N/2);
                 }
                 if(p.grabJ == 0) {
-//                        fillVal = boxR[x + N*y + N*N*obsx + N*N*N*obsy]/p.L;
+                        fillVal = boxR[x + N*y + N*N*obsx + N*N*N*obsy]/p.L;
                 }
 //                        fillRecord(jumpRecord,fillVal,p.recordLength);
 //fillRecord(jumpRecord,newx,p.recordLength);
