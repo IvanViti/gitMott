@@ -309,6 +309,10 @@ __global__ void findProbabilities(REAL *probabilities,REAL *particles,REAL *pote
 	}
 };
 
+__device__ void simpleFill(REAL *jumpRecord, REAL fillVal, int t) {
+	jumpRecord[t] = fillVal;
+}
+
 __device__ void fillRecord(REAL *jumpRecord,REAL fillVal,int N) {
 	int found = 0;
 	int n = 0;
@@ -325,13 +329,14 @@ __device__ void fillRecord(REAL *jumpRecord,REAL fillVal,int N) {
 
 
 //calculates which direction the electron went and how far (not necessary if you are not measuring anything)
- __global__ void interaction(parameters p,int x,int y,int newx,int newy,REAL *particles,REAL *jumpRecord,REAL *boxR) {
+ __global__ void interaction(parameters p,int x,int y,int newx,int newy,REAL *particles,REAL *jumpRecord,REAL *boxR,int tStep) {
         int N = p.N,obsx,obsy;
         int whichWay = 0;
         REAL fillVal;
+	fillVal = newx;
 
         int idx = blockIdx.x*blockDim.x + threadIdx.x;
-        if (idx < 1) {//only needs to be done once
+        if (idx == 0) {//only needs to be done once
 		if (particles[x + y*N] == particles[newx + newy*N]) {
 			if (particles[x + y*N] > 0) {
 				whichWay = 1;
@@ -353,15 +358,14 @@ __device__ void fillRecord(REAL *jumpRecord,REAL fillVal,int N) {
                 obsy = (int) G_mod(newy + ( p.N/2 - y),p.N);
 
                 if(p.grabJ == 1) {
-                              fillVal = -whichWay*(obsx-p.N/2);
+//                              fillVal = -whichWay*(obsx-p.N/2);
                 }
-
                 if(p.grabJ == 0) {
-                        fillVal = boxR[x + N*y + N*N*obsx + N*N*N*obsy]/p.L;
+//                        fillVal = boxR[x + N*y + N*N*obsx + N*N*N*obsy]/p.L;
                 }
-
-                        fillRecord(jumpRecord,fillVal,p.recordLength);
-
+//                        fillRecord(jumpRecord,fillVal,p.recordLength);
+//fillRecord(jumpRecord,newx,p.recordLength);
+simpleFill(jumpRecord,fillVal,tStep);
 	}
 }
 
@@ -643,15 +647,18 @@ cout<<"cell "<<v.herePicked[0]<<" was picked with a weight "<<v.hereProb[v.hereP
 */
 //	printBoxGPU(v.reducedProb,p.N,"reduced.dat");
 
+printMagnifyGPU(v.probabilities,p.N,"magnified.dat");
 
         lastx = v.herePicked[0]/p.N;
         lasty = v.herePicked[0]%p.N;
         newx = C_mod(x - p.N/2 +  lastx,p.N);
         newy = C_mod(y - p.N/2 +  lasty,p.N);
-
+//cout<<"x is "<<x<<endl;
+//cout<<"lastx is "<<lastx<<endl;
+//cout<<"newx is "<<newx<<endl;
 //cout<<x<<" "<<y<<" "<<newx<<" "<<newy<<endl;
-	
-	interaction<<<blocks,threads>>>(p,x,y,newx,newy,v.particles,v.jumpRecord,v.boxR);
+//cout<<"timestep is "<<v.tStep<<endl;
+	interaction<<<blocks,threads>>>(p,x,y,newx,newy,v.particles,v.jumpRecord,v.boxR,v.tStep);
 
         potSwap<<<blocks,threads>>>(p, x, y,newx,newy,p.N,v.particles,v.boxR,v.potentials);
         particleMove<<<blocks,threads>>>(x, y, newx,newy,p.N,v.particles);
@@ -725,7 +732,7 @@ void findJump(vectors &v,int threads,int blocks,parameters p) {
 
 //	printBoxGPU(v.potentials,p.N,"pot0.dat");
 
-	findTime(p,blocks,threads,v);	
+//	findTime(p,blocks,threads,v);	
 
 //	printBoxGPU(v.potentials,p.N,"pot1.dat");
 		
@@ -2076,7 +2083,7 @@ void paramLoad(parameters &p, char *argv[]){
         sprintf(p.boxName, "box.txt");
         sprintf(p.timeName,"time.txt");
 //      N = 32;
-        p.N = 10;  //size of system (N x N)
+        p.N = 30;  //size of system (N x N)
 //      N = 256;
         p.muVar = 0; // randomness of substrate (site energy?) -muvar to muvar
 //      muVar = 1e-5;
@@ -2100,8 +2107,8 @@ void paramLoad(parameters &p, char *argv[]){
 //      L = 7e-6;       
         p.L = 1e-8; //10 nm average inter-granule spacing
 //      tSteps = 1000000; //for statistically accurate runs (timesteps)
-//      tSteps = 10000; //for potential runs
-        p.tSteps = 1; // for seeing the fields
+      	p.tSteps = 10000; //for potential runs
+//        p.tSteps = 1; // for seeing the fields
 //      tSteps = 0;
 //      relax = 1;
         p.relax = 0; //wether or not to relax the system before running (should be 0 iff muVar & xyVar = 0)
@@ -2218,9 +2225,8 @@ void vectorLoad(vectors &v,parameters p,int blocks, int threads){
         cudaMalloc(&v.aMatrix,N*N*sizeof(REAL));
         cudaMalloc(&v.boxR,N*N*N*N*sizeof(REAL));
 	cudaMalloc(&v.picked,sizeof(int));	
-
-	v.herePicked = new int[0];
-	v.herePicked[0] = 0;
+        v.herePicked = new int[1];
+        v.herePicked[0] = 0;
 	v.timeRun = new REAL[p.recordLength];
         v.sumRun = new REAL[p.recordLength];
 	v.herePot =  new REAL[N*N];
@@ -2238,7 +2244,6 @@ void vectorLoad(vectors &v,parameters p,int blocks, int threads){
         v.hereYDiff = new REAL[N*N];
         v.hereXDiff = createDiff(v.hereXDiff, p.xVar, N);
         v.hereYDiff = createDiff(v.hereYDiff, p.yVar, N);
-
         v.hereS = new REAL[N*N];
         v.hereS = createSub(v.hereS,p.muVar,N);
         v.hereBoxR = new REAL[N*N*N*N];
